@@ -1,4 +1,5 @@
 import type { MCPTool } from '../utils/types.js';
+import { optimizeTool } from './schema-optimizer.js';
 
 export type ToolsetLoader = () => Promise<Record<string, MCPTool>>;
 
@@ -25,8 +26,11 @@ export class ToolGateController {
       return;
     }
     const tools = await loader();
-    this.toolsetTools[name] = Object.keys(tools);
-    Object.assign(this.loadedTools, tools);
+    const optimized = Object.fromEntries(
+      Object.entries(tools).map(([n, t]) => [n, optimizeTool(t)])
+    );
+    this.toolsetTools[name] = Object.keys(optimized);
+    Object.assign(this.loadedTools, optimized);
     this.activeToolsets.add(name);
   }
 
