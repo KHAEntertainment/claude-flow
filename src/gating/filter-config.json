@@ -1,0 +1,14 @@
+{
+  "taskType": {
+    "enabled": false,
+    "map": {}
+  },
+  "resource": {
+    "enabled": false,
+    "maxTools": 10
+  },
+  "security": {
+    "enabled": false,
+    "blocked": []
+  }
+}
