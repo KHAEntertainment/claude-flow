@@ -1,4 +1,4 @@
-import type { MCPTool } from '../utils/types.ts';
+import type { MCPTool } from '../utils/types.js';
 
 export type ToolsetLoader = () => Promise<Record<string, MCPTool>>;
 

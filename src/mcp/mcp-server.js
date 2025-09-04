@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { EnhancedMemory } from '../memory/enhanced-memory.js';
 // Use the same memory system that npx commands use - singleton instance
 import { memoryStore } from '../memory/fallback-store.js';
-import { ToolGateController } from '../gating/toolset-registry.ts';
+import { ToolGateController } from '../gating/toolset-registry.js';
 
 // Initialize agent tracker
 await import('./implementations/agent-tracker.js').catch(() => {
