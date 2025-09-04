@@ -4,6 +4,7 @@
 
 import type { MCPTool, MCPContext, AgentProfile, Task, MemoryEntry } from '../utils/types.js';
 import type { ILogger } from '../core/logger.js';
+import { optimizeTool } from '../gating/schema-optimizer.js';
 import { getValidAgentTypes as getAvailableAgentTypes, getAgentTypeSchema } from '../constants/agent-types.js';
 import type { Permissions } from './auth.js';
 import { getAgent as loadAgentDefinition } from '../agents/agent-loader.js';
@@ -115,13 +116,13 @@ export async function createClaudeFlowTools(logger: ILogger): Promise<MCPTool[]>
     expanded.map((tool) => enhanceToolWithAgentTypes(tool))
   );
 
-  return enhancedTools;
+  return enhancedTools.map(optimizeTool);
 }
 
 export function createSpawnAgentTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'agents/spawn',
-    description: 'Spawn a new Claude agent with specified configuration',
+    description: 'Spawn a Claude agent with settings',
     inputSchema: {
       type: 'object',
       properties: {
