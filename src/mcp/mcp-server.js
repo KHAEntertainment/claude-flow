@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { EnhancedMemory } from '../memory/enhanced-memory.js';
 // Use the same memory system that npx commands use - singleton instance
 import { memoryStore } from '../memory/fallback-store.js';
+import { ToolGateController } from '../gating/toolset-registry.ts';
 
 // Initialize agent tracker
 await import('./implementations/agent-tracker.js').catch(() => {
@@ -76,7 +77,11 @@ class ClaudeFlowMCPServer {
       },
     };
     this.sessionId = `session-cf-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-    this.tools = this.initializeTools();
+    this.gateController = new ToolGateController({
+      core: async () => this.initializeTools(),
+    });
+    this.discoveryTools = this.getDiscoveryTools();
+    this.tools = { ...this.discoveryTools, ...this.gateController.getAvailableTools() };
     this.resources = this.initializeResources();
 
     // Initialize shared memory store (same as npx commands)
@@ -101,6 +106,50 @@ class ClaudeFlowMCPServer {
   }
 
   // Database operations now use the same memory store as working npx commands
+  getDiscoveryTools() {
+    return {
+      discover_toolsets: {
+        name: 'discover_toolsets',
+        description: 'List available toolsets',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => ({ toolsets: this.gateController.discoverToolsets() }),
+      },
+      enable_toolset: {
+        name: 'enable_toolset',
+        description: 'Enable a toolset by name',
+        inputSchema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+        handler: async ({ name }) => {
+          await this.gateController.enableToolset(name);
+          this.tools = { ...this.discoveryTools, ...this.gateController.getAvailableTools() };
+          return { tools: this.gateController.listActiveTools() };
+        },
+      },
+      disable_toolset: {
+        name: 'disable_toolset',
+        description: 'Disable a toolset by name',
+        inputSchema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+        handler: async ({ name }) => {
+          this.gateController.disableToolset(name);
+          this.tools = { ...this.discoveryTools, ...this.gateController.getAvailableTools() };
+          return { tools: this.gateController.listActiveTools() };
+        },
+      },
+      list_active_tools: {
+        name: 'list_active_tools',
+        description: 'List currently active tools',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => ({ tools: this.gateController.listActiveTools() }),
+      },
+    };
+  }
 
   initializeTools() {
     return {
@@ -1077,6 +1126,9 @@ class ClaudeFlowMCPServer {
   }
 
   async executeTool(name, args) {
+    if (this.tools[name] && typeof this.tools[name].handler === 'function') {
+      return this.tools[name].handler(args);
+    }
     // Simulate tool execution based on the tool name
     switch (name) {
       case 'swarm_init':
