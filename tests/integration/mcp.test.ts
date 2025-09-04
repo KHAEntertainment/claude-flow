@@ -19,7 +19,6 @@ import {
   MCPTool,
   MCPSession,
 } from '../../src/utils/types.ts';
-import { Logger } from '../../src/core/logger.ts';
 import { EventBus } from '../../src/core/event-bus.ts';
 
 // Mock orchestrator for testing
@@ -183,12 +182,15 @@ class MockOrchestrator {
 describe('MCP Integration Tests', () => {
   let server: MCPServer;
   let mockOrchestrator: MockOrchestrator;
-  let logger: Logger;
+  let LoggerClass: any;
+  let logger: any;
   let eventBus: EventBus;
   let config: MCPConfig;
 
   beforeEach(async () => {
-    logger = new Logger();
+    process.env.CLAUDE_FLOW_ENV = 'development';
+    ({ Logger: LoggerClass } = await import('../../src/core/logger.ts'));
+    logger = new LoggerClass();
     await logger.configure({
       level: 'debug',
       format: 'text',
@@ -246,6 +248,39 @@ describe('MCP Integration Tests', () => {
       const metrics = server.getMetrics();
       expect(metrics.totalRequests).toBeGreaterThanOrEqual(0);
       
+      await server.stop();
+    });
+  });
+
+  describe('Legacy tool name compatibility', () => {
+    it('should expose legacy tool names alongside canonical names', async () => {
+      await server.start();
+
+      const tools = server['toolRegistry'].listTools();
+      const names = tools.map(t => t.name);
+      expect(names).toContain('agents/spawn');
+      expect(names).toContain('agent_spawn');
+
+      await server.stop();
+    });
+
+    it('should execute tools using legacy names', async () => {
+      await server.start();
+
+      const spawnResult = await server['toolRegistry'].executeTool(
+        'agent_spawn',
+        { type: 'researcher', name: 'Legacy Agent' },
+        { sessionId: 'test-session' }
+      );
+      expect(spawnResult).toHaveProperty('agentId');
+
+      const listResult = await server['toolRegistry'].executeTool(
+        'agent_list',
+        {},
+        { sessionId: 'test-session' }
+      );
+      expect(Array.isArray(listResult.agents)).toBe(true);
+
       await server.stop();
     });
   });
