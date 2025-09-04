@@ -6,6 +6,7 @@
 import type { DistributedMemorySystem } from '../memory/distributed-memory.js';
 import type { AgentState, AgentId, AgentType, AgentStatus } from '../swarm/types.js';
 import { EventEmitter } from 'node:events';
+import { getAgent as loadAgentDefinition } from './agent-loader.js';
 
 export interface AgentRegistryEntry {
   agent: AgentState;
@@ -59,8 +60,9 @@ export class AgentRegistry extends EventEmitter {
 
   /**
    * Register a new agent in the registry
-   */
+  */
   async registerAgent(agent: AgentState, tags: string[] = []): Promise<void> {
+    const definition = await loadAgentDefinition(agent.type);
     const entry: AgentRegistryEntry = {
       agent,
       createdAt: new Date(),
@@ -69,6 +71,9 @@ export class AgentRegistry extends EventEmitter {
       metadata: {
         registeredBy: 'agent-manager',
         version: '1.0.0',
+        definition: definition
+          ? { description: definition.description, capabilities: definition.capabilities }
+          : undefined,
       },
     };
 
@@ -95,6 +100,7 @@ export class AgentRegistry extends EventEmitter {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
 
+    const typeChanged = updates.type && updates.type !== entry.agent.type;
     // Merge updates
     entry.agent = { ...entry.agent, ...updates };
     entry.lastUpdated = new Date();
@@ -103,6 +109,13 @@ export class AgentRegistry extends EventEmitter {
       entry.agent.status,
       ...entry.tags.filter((t) => t !== entry.agent.type && t !== entry.agent.status),
     ];
+
+    if (typeChanged) {
+      const definition = await loadAgentDefinition(entry.agent.type);
+      entry.metadata.definition = definition
+        ? { description: definition.description, capabilities: definition.capabilities }
+        : undefined;
+    }
 
     // Store updated entry
     const key = this.getAgentKey(agentId);

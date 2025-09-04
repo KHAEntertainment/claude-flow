@@ -7,6 +7,7 @@ import type { ILogger } from '../core/logger.js';
 import { optimizeTool } from '../gating/schema-optimizer.js';
 import { getValidAgentTypes as getAvailableAgentTypes, getAgentTypeSchema } from '../constants/agent-types.js';
 import type { Permissions } from './auth.js';
+import { getAgent as loadAgentDefinition } from '../agents/agent-loader.js';
 
 export interface ClaudeFlowToolContext extends MCPContext {
   orchestrator?: any; // Reference to orchestrator instance
@@ -172,12 +173,15 @@ export function createSpawnAgentTool(logger: ILogger): ClaudeFlowTool {
         throw new Error('Orchestrator not available');
       }
 
+      const definition = await loadAgentDefinition(input.type);
+
       const profile: AgentProfile = {
         id: `agent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: input.name,
         type: input.type,
-        capabilities: input.capabilities || [],
-        systemPrompt: input.systemPrompt || getDefaultSystemPrompt(input.type),
+        capabilities: input.capabilities || definition?.capabilities || [],
+        systemPrompt:
+          input.systemPrompt || definition?.content || getDefaultSystemPrompt(input.type),
         maxConcurrentTasks: input.maxConcurrentTasks || 3,
         priority: input.priority || 5,
         environment: input.environment,

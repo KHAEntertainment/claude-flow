@@ -47,8 +47,8 @@ export interface AgentCategory {
 
 class AgentLoader {
   private agentCache: Map<string, AgentDefinition> = new Map();
-  private categoriesCache: AgentCategory[] = [];
-  private lastLoadTime = 0;
+  private agentIndex: Map<string, { path: string; category: string }> = new Map();
+  private lastIndexTime = 0;
   private cacheExpiry = 60000; // 1 minute cache
 
   /**
@@ -109,70 +109,34 @@ class AgentLoader {
   }
 
   /**
-   * Load all agent definitions from .claude/agents directory
+   * Build index of available agents without loading definitions
    */
-  private async loadAgents(): Promise<void> {
+  private async buildAgentIndex(): Promise<void> {
+    if (this.agentIndex.size > 0 && Date.now() - this.lastIndexTime < this.cacheExpiry) {
+      return;
+    }
+
     const agentsDir = this.getAgentsDirectory();
-    
     if (!existsSync(agentsDir)) {
       console.warn(`Agents directory not found: ${agentsDir}`);
       return;
     }
 
-    // Find all .md files in the agents directory
     const agentFiles = await glob('**/*.md', {
       cwd: agentsDir,
       ignore: ['**/README.md', '**/MIGRATION_SUMMARY.md'],
       absolute: true,
     });
 
-    // Clear cache
-    this.agentCache.clear();
-    this.categoriesCache = [];
+    this.agentIndex.clear();
+    this.lastIndexTime = Date.now();
 
-    // Track categories
-    const categoryMap = new Map<string, AgentDefinition[]>();
-
-    // Parse each agent file
     for (const filePath of agentFiles) {
-      const agent = this.parseAgentFile(filePath);
-      if (agent) {
-        this.agentCache.set(agent.name, agent);
-        
-        // Determine category from file path
-        const relativePath = filePath.replace(agentsDir, '');
-        const pathParts = relativePath.split('/');
-        const category = pathParts[1] || 'uncategorized'; // First directory after agents/
-        
-        if (!categoryMap.has(category)) {
-          categoryMap.set(category, []);
-        }
-        categoryMap.get(category)!.push(agent);
-      }
-    }
-
-    // Build categories array
-    this.categoriesCache = Array.from(categoryMap.entries()).map(([name, agents]) => ({
-      name,
-      agents: agents.sort((a, b) => a.name.localeCompare(b.name)),
-    }));
-
-    this.lastLoadTime = Date.now();
-  }
-
-  /**
-   * Check if cache needs refresh
-   */
-  private needsRefresh(): boolean {
-    return Date.now() - this.lastLoadTime > this.cacheExpiry;
-  }
-
-  /**
-   * Ensure agents are loaded and cache is fresh
-   */
-  private async ensureLoaded(): Promise<void> {
-    if (this.agentCache.size === 0 || this.needsRefresh()) {
-      await this.loadAgents();
+      const relativePath = filePath.replace(agentsDir + '/', '');
+      const parts = relativePath.split('/');
+      const category = parts[0] || 'uncategorized';
+      const name = parts[parts.length - 1].replace(/\.md$/, '');
+      this.agentIndex.set(name, { path: filePath, category });
     }
   }
 
@@ -180,8 +144,8 @@ class AgentLoader {
    * Get all available agent types
    */
   async getAvailableAgentTypes(): Promise<string[]> {
-    await this.ensureLoaded();
-    const currentTypes = Array.from(this.agentCache.keys());
+    await this.buildAgentIndex();
+    const currentTypes = Array.from(this.agentIndex.keys());
     const legacyTypes = Object.keys(LEGACY_AGENT_MAPPING);
     // Return both current types and legacy types, removing duplicates
     const combined = [...currentTypes, ...legacyTypes];
@@ -193,35 +157,76 @@ class AgentLoader {
    * Get agent definition by name
    */
   async getAgent(name: string): Promise<AgentDefinition | null> {
-    await this.ensureLoaded();
-    // First try the original name, then try the legacy mapping
-    return this.agentCache.get(name) || this.agentCache.get(resolveLegacyAgentType(name)) || null;
+    // Check cache first
+    const cached =
+      this.agentCache.get(name) || this.agentCache.get(resolveLegacyAgentType(name));
+    if (cached) return cached;
+
+    await this.buildAgentIndex();
+    const info =
+      this.agentIndex.get(name) || this.agentIndex.get(resolveLegacyAgentType(name));
+    if (!info) return null;
+
+    const agent = this.parseAgentFile(info.path);
+    if (agent) {
+      this.agentCache.set(agent.name, agent);
+    }
+    return agent;
+  }
+
+  /**
+   * Preload multiple agents at once. If no toolset provided, loads all agents.
+   */
+  async preloadAgents(toolset?: string[]): Promise<AgentDefinition[]> {
+    await this.buildAgentIndex();
+    const names =
+      toolset && toolset.length > 0
+        ? toolset.map(resolveLegacyAgentType)
+        : Array.from(this.agentIndex.keys());
+    const agents: AgentDefinition[] = [];
+    for (const name of names) {
+      const agent = await this.getAgent(name);
+      if (agent) agents.push(agent);
+    }
+    return agents;
   }
 
   /**
    * Get all agent definitions
    */
   async getAllAgents(): Promise<AgentDefinition[]> {
-    await this.ensureLoaded();
-    return Array.from(this.agentCache.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return (await this.preloadAgents()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**
    * Get agents organized by category
    */
   async getAgentCategories(): Promise<AgentCategory[]> {
-    await this.ensureLoaded();
-    return this.categoriesCache;
+    await this.buildAgentIndex();
+    const categoryMap = new Map<string, AgentDefinition[]>();
+    for (const [name, info] of this.agentIndex.entries()) {
+      const agent = await this.getAgent(name);
+      if (!agent) continue;
+      if (!categoryMap.has(info.category)) {
+        categoryMap.set(info.category, []);
+      }
+      categoryMap.get(info.category)!.push(agent);
+    }
+
+    return Array.from(categoryMap.entries()).map(([name, agents]) => ({
+      name,
+      agents: agents.sort((a, b) => a.name.localeCompare(b.name)),
+    }));
   }
 
   /**
    * Search agents by capabilities, description, or name
    */
   async searchAgents(query: string): Promise<AgentDefinition[]> {
-    await this.ensureLoaded();
+    const agents = await this.preloadAgents();
     const lowerQuery = query.toLowerCase();
-    
-    return Array.from(this.agentCache.values()).filter(agent => {
+
+    return agents.filter(agent => {
       return (
         agent.name.toLowerCase().includes(lowerQuery) ||
         agent.description.toLowerCase().includes(lowerQuery) ||
@@ -235,9 +240,9 @@ class AgentLoader {
    * Check if an agent type is valid
    */
   async isValidAgentType(name: string): Promise<boolean> {
-    await this.ensureLoaded();
+    await this.buildAgentIndex();
     // First try the original name, then try the legacy mapping
-    return this.agentCache.has(name) || this.agentCache.has(resolveLegacyAgentType(name));
+    return this.agentIndex.has(name) || this.agentIndex.has(resolveLegacyAgentType(name));
   }
 
   /**
@@ -253,8 +258,10 @@ class AgentLoader {
    * Force refresh the agent cache
    */
   async refresh(): Promise<void> {
-    this.lastLoadTime = 0; // Force reload
-    await this.loadAgents();
+    this.agentCache.clear();
+    this.agentIndex.clear();
+    this.lastIndexTime = 0;
+    await this.buildAgentIndex();
   }
 }
 
@@ -264,6 +271,7 @@ export const agentLoader = new AgentLoader();
 // Convenience functions
 export const getAvailableAgentTypes = () => agentLoader.getAvailableAgentTypes();
 export const getAgent = (name: string) => agentLoader.getAgent(name);
+export const preloadAgents = (toolset?: string[]) => agentLoader.preloadAgents(toolset);
 export const getAllAgents = () => agentLoader.getAllAgents();
 export const getAgentCategories = () => agentLoader.getAgentCategories();
 export const searchAgents = (query: string) => agentLoader.searchAgents(query);

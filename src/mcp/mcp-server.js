@@ -7,6 +7,7 @@
 import { createClaudeFlowTools } from './claude-flow-tools.js';
 import { memoryStore } from '../memory/fallback-store.js';
 import { ToolGateController } from '../gating/toolset-registry.js';
+import { getAgent as loadAgentDefinition, resolveLegacyAgentType } from '../agents/agent-loader.js';
 import { optimizeTool } from '../gating/schema-optimizer.js';
 
 class ClaudeFlowMCPServer {
@@ -1099,13 +1100,15 @@ class ClaudeFlowMCPServer {
       case 'agent_spawn':
         const agentId = `agent_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const resolvedType = resolveLegacyAgentType(args.type);
+        const definition = await loadAgentDefinition(resolvedType);
+        const capabilities = args.capabilities || definition?.capabilities || [];
         const agentData = {
           id: agentId,
           swarmId: args.swarmId || (await this.getActiveSwarmId()),
           name: args.name || `${resolvedType}-${Date.now()}`,
           type: resolvedType,
           status: 'active',
-          capabilities: JSON.stringify(args.capabilities || []),
+          capabilities: JSON.stringify(capabilities),
           metadata: JSON.stringify({
             sessionId: this.sessionId,
             createdBy: 'mcp-server',
