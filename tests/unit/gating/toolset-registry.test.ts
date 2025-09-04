@@ -33,4 +33,35 @@ describe('ToolGateController', () => {
     const sizeAfter = controller.getContextSize();
     expect(sizeAfter).toBeLessThan(sizeWithBoth);
   });
+
+  it('optimizes tool schemas on registration', async () => {
+    const long = 'x'.repeat(60);
+    controller = new ToolGateController({
+      setC: async () => ({
+        tool: {
+          name: 'tool',
+          description: long,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              foo: {
+                type: 'string',
+                description: long,
+                default: 'bar',
+                examples: ['baz']
+              }
+            }
+          },
+          handler: async () => ({})
+        }
+      })
+    });
+    await controller.enableToolset('setC');
+    const tool = controller.getAvailableTools()['tool'] as any;
+    expect(tool.description.length).toBeLessThanOrEqual(50);
+    const foo = tool.inputSchema.properties.foo;
+    expect(foo.default).toBeUndefined();
+    expect(foo.examples).toBeUndefined();
+    expect(foo.description.length).toBeLessThanOrEqual(50);
+  });
 });
