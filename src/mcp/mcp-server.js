@@ -1,109 +1,39 @@
 #!/usr/bin/env node
 /**
- * Claude-Flow MCP Server
- * Implements the Model Context Protocol for Claude-Flow v2.0.0
- * Compatible with ruv-swarm MCP interface
+ * Claude-Flow MCP Server (simplified)
+ * Uses consolidated tool implementations from claude-flow-tools.
  */
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { EnhancedMemory } from '../memory/enhanced-memory.js';
-// Use the same memory system that npx commands use - singleton instance
+import { createClaudeFlowTools } from './claude-flow-tools.js';
 import { memoryStore } from '../memory/fallback-store.js';
 import { ToolGateController } from '../gating/toolset-registry.js';
-
-// Initialize agent tracker
-await import('./implementations/agent-tracker.js').catch(() => {
-  // If ES module import fails, try require
-  try {
-    require('./implementations/agent-tracker');
-  } catch (e) {
-    console.log('Agent tracker not loaded');
-  }
-});
-
-// Initialize DAA manager
-await import('./implementations/daa-tools.js').catch(() => {
-  // If ES module import fails, try require
-  try {
-    require('./implementations/daa-tools');
-  } catch (e) {
-    console.log('DAA manager not loaded');
-  }
-});
-
-// Initialize Workflow and Performance managers
-await import('./implementations/workflow-tools.js').catch(() => {
-  // If ES module import fails, try require
-  try {
-    require('./implementations/workflow-tools');
-  } catch (e) {
-    console.log('Workflow tools not loaded');
-  }
-});
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Legacy agent type mapping for backward compatibility
-const LEGACY_AGENT_MAPPING = {
-  analyst: 'code-analyzer',
-  coordinator: 'task-orchestrator', 
-  optimizer: 'perf-analyzer',
-  documenter: 'api-docs',
-  monitor: 'performance-benchmarker',
-  specialist: 'system-architect',
-  architect: 'system-architect',
-};
-
-// Resolve legacy agent types to current equivalents
-function resolveLegacyAgentType(legacyType) {
-  return LEGACY_AGENT_MAPPING[legacyType] || legacyType;
-}
 
 class ClaudeFlowMCPServer {
   constructor() {
     this.version = '2.0.0-alpha.59';
-    this.memoryStore = memoryStore; // Use shared singleton instance
-    // Use the same memory system that already works
+    this.memoryStore = memoryStore;
     this.capabilities = {
-      tools: {
-        listChanged: true,
-      },
-      resources: {
-        subscribe: true,
-        listChanged: true,
-      },
+      tools: { listChanged: true },
+      resources: { subscribe: true, listChanged: true },
     };
     this.sessionId = `session-cf-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    this.tools = {};
     this.gateController = new ToolGateController({
       core: async () => this.initializeTools(),
     });
     this.discoveryTools = this.getDiscoveryTools();
     this.tools = { ...this.discoveryTools, ...this.gateController.getAvailableTools() };
     this.resources = this.initializeResources();
-
-    // Initialize shared memory store (same as npx commands)
-    this.initializeMemory().catch((err) => {
-      console.error(
-        `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Failed to initialize shared memory:`,
-        err,
-      );
-    });
-
-    // Database operations now use the same shared memory store as npx commands
+    this.toolsPromise = this.initializeTools();
   }
 
-  async initializeMemory() {
-    await this.memoryStore.initialize();
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) Shared memory store initialized (same as npx)`,
-    );
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) Using ${this.memoryStore.isUsingFallback() ? 'in-memory' : 'SQLite'} storage`,
-    );
-  }
+
+  async initializeTools() {
+    const logger = {
+      info: (...args) => console.error(`[${new Date().toISOString()}] INFO [claude-flow-mcp]`, ...args),
+      warn: (...args) => console.error(`[${new Date().toISOString()}] WARN [claude-flow-mcp]`, ...args),
+      error: (...args) => console.error(`[${new Date().toISOString()}] ERROR [claude-flow-mcp]`, ...args),
+      debug: (...args) => console.error(`[${new Date().toISOString()}] DEBUG [claude-flow-mcp]`, ...args),
 
   // Database operations now use the same memory store as working npx commands
   getDiscoveryTools() {
@@ -980,7 +910,12 @@ class ClaudeFlowMCPServer {
         description: 'System diagnostics',
         inputSchema: { type: 'object', properties: { components: { type: 'array' } } },
       },
+
     };
+    const toolList = await createClaudeFlowTools(logger);
+    for (const tool of toolList) {
+      this.tools[tool.name] = tool;
+    }
   }
 
   initializeResources() {
@@ -1013,78 +948,55 @@ class ClaudeFlowMCPServer {
   }
 
   async handleMessage(message) {
-    try {
-      const { id, method, params } = message;
-
-      switch (method) {
-        case 'initialize':
-          return this.handleInitialize(id, params);
-        case 'tools/list':
-          return this.handleToolsList(id);
-        case 'tools/call':
-          return this.handleToolCall(id, params);
-        case 'resources/list':
-          return this.handleResourcesList(id);
-        case 'resources/read':
-          return this.handleResourceRead(id, params);
-        default:
-          return this.createErrorResponse(id, -32601, 'Method not found');
-      }
-    } catch (error) {
-      return this.createErrorResponse(message.id, -32603, 'Internal error', error.message);
+    const { id, method, params } = message;
+    switch (method) {
+      case 'initialize':
+        return this.handleInitialize(id);
+      case 'tools/list':
+        return await this.handleToolsList(id);
+      case 'tools/call':
+        return await this.handleToolCall(id, params);
+      case 'resources/list':
+        return this.handleResourcesList(id);
+      case 'resources/read':
+        return this.handleResourceRead(id, params);
+      default:
+        return this.createErrorResponse(id, -32601, 'Method not found');
     }
   }
 
-  handleInitialize(id, params) {
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) 🔌 Connection established: ${this.sessionId}`,
-    );
-
+  handleInitialize(id) {
+    console.error(`[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) 🔌 Connection established: ${this.sessionId}`);
     return {
       jsonrpc: '2.0',
       id,
       result: {
         protocolVersion: '2024-11-05',
         capabilities: this.capabilities,
-        serverInfo: {
-          name: 'claude-flow',
-          version: this.version,
-        },
+        serverInfo: { name: 'claude-flow', version: this.version },
       },
     };
   }
 
-  handleToolsList(id) {
-    const toolsList = Object.values(this.tools);
-    return {
-      jsonrpc: '2.0',
-      id,
-      result: {
-        tools: toolsList,
-      },
-    };
+  async handleToolsList(id) {
+    await this.toolsPromise;
+    const toolsList = Object.values(this.tools).map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    }));
+    return { jsonrpc: '2.0', id, result: { tools: toolsList } };
   }
 
   async handleToolCall(id, params) {
     const { name, arguments: args } = params;
-
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) 🔧 Tool called: ${name}`,
-    );
-
+    console.error(`[${new Date().toISOString()}] INFO [claude-flow-mcp] (${this.sessionId}) 🔧 Tool called: ${name}`);
     try {
       const result = await this.executeTool(name, args);
       return {
         jsonrpc: '2.0',
         id,
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        },
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
       };
     } catch (error) {
       return this.createErrorResponse(id, -32000, 'Tool execution failed', error.message);
@@ -1093,39 +1005,29 @@ class ClaudeFlowMCPServer {
 
   handleResourcesList(id) {
     const resourcesList = Object.values(this.resources);
-    return {
-      jsonrpc: '2.0',
-      id,
-      result: {
-        resources: resourcesList,
-      },
-    };
+    return { jsonrpc: '2.0', id, result: { resources: resourcesList } };
   }
 
   async handleResourceRead(id, params) {
     const { uri } = params;
-
-    try {
-      const content = await this.readResource(uri);
-      return {
-        jsonrpc: '2.0',
-        id,
-        result: {
-          contents: [
-            {
-              uri,
-              mimeType: 'application/json',
-              text: JSON.stringify(content, null, 2),
-            },
-          ],
-        },
-      };
-    } catch (error) {
-      return this.createErrorResponse(id, -32000, 'Resource read failed', error.message);
+    const resource = this.resources[uri];
+    if (!resource) {
+      return this.createErrorResponse(id, -32000, 'Resource not found');
     }
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { contents: [{ uri, mimeType: resource.mimeType, text: resource.description }] },
+    };
   }
 
   async executeTool(name, args) {
+
+    await this.toolsPromise;
+    const tool = this.tools[name];
+    if (!tool) {
+      throw new Error(`Unknown tool: ${name}`);
+
     if (this.tools[name] && typeof this.tools[name].handler === 'function') {
       return this.tools[name].handler(args);
     }
@@ -1998,305 +1900,30 @@ class ClaudeFlowMCPServer {
 
       default:
         throw new Error(`Unknown resource: ${uri}`);
+
     }
+    return await tool.handler(args, { sessionId: this.sessionId });
   }
 
-  async handleMemoryUsage(args) {
-    if (!this.memoryStore) {
-      return {
-        success: false,
-        error: 'Shared memory system not initialized',
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    try {
-      switch (args.action) {
-        case 'store':
-          const storeResult = await this.memoryStore.store(args.key, args.value, {
-            namespace: args.namespace || 'default',
-            ttl: args.ttl,
-            metadata: {
-              sessionId: this.sessionId,
-              storedBy: 'mcp-server',
-              type: 'knowledge',
-            },
-          });
-
-          console.error(
-            `[${new Date().toISOString()}] INFO [claude-flow-mcp] Stored in shared memory: ${args.key} (namespace: ${args.namespace || 'default'})`,
-          );
-
-          return {
-            success: true,
-            action: 'store',
-            key: args.key,
-            namespace: args.namespace || 'default',
-            stored: true,
-            size: storeResult.size || args.value.length,
-            id: storeResult.id,
-            storage_type: this.memoryStore.isUsingFallback() ? 'in-memory' : 'sqlite',
-            timestamp: new Date().toISOString(),
-          };
-
-        case 'retrieve':
-          const value = await this.memoryStore.retrieve(args.key, {
-            namespace: args.namespace || 'default',
-          });
-
-          console.error(
-            `[${new Date().toISOString()}] INFO [claude-flow-mcp] Retrieved from shared memory: ${args.key} (found: ${value !== null})`,
-          );
-
-          return {
-            success: true,
-            action: 'retrieve',
-            key: args.key,
-            value: value,
-            found: value !== null,
-            namespace: args.namespace || 'default',
-            storage_type: this.memoryStore.isUsingFallback() ? 'in-memory' : 'sqlite',
-            timestamp: new Date().toISOString(),
-          };
-
-        case 'list':
-          const entries = await this.memoryStore.list({
-            namespace: args.namespace || 'default',
-            limit: 100,
-          });
-
-          console.error(
-            `[${new Date().toISOString()}] INFO [claude-flow-mcp] Listed shared memory entries: ${entries.length} (namespace: ${args.namespace || 'default'})`,
-          );
-
-          return {
-            success: true,
-            action: 'list',
-            namespace: args.namespace || 'default',
-            entries: entries,
-            count: entries.length,
-            storage_type: this.memoryStore.isUsingFallback() ? 'in-memory' : 'sqlite',
-            timestamp: new Date().toISOString(),
-          };
-
-        case 'delete':
-          const deleted = await this.memoryStore.delete(args.key, {
-            namespace: args.namespace || 'default',
-          });
-
-          console.error(
-            `[${new Date().toISOString()}] INFO [claude-flow-mcp] Deleted from shared memory: ${args.key} (success: ${deleted})`,
-          );
-
-          return {
-            success: true,
-            action: 'delete',
-            key: args.key,
-            namespace: args.namespace || 'default',
-            deleted: deleted,
-            storage_type: this.memoryStore.isUsingFallback() ? 'in-memory' : 'sqlite',
-            timestamp: new Date().toISOString(),
-          };
-
-        case 'search':
-          const results = await this.memoryStore.search(args.value || '', {
-            namespace: args.namespace || 'default',
-            limit: 50,
-          });
-
-          console.error(
-            `[${new Date().toISOString()}] INFO [claude-flow-mcp] Searched shared memory: ${results.length} results for "${args.value}"`,
-          );
-
-          return {
-            success: true,
-            action: 'search',
-            pattern: args.value,
-            namespace: args.namespace || 'default',
-            results: results,
-            count: results.length,
-            storage_type: this.memoryStore.isUsingFallback() ? 'in-memory' : 'sqlite',
-            timestamp: new Date().toISOString(),
-          };
-
-        default:
-          return {
-            success: false,
-            error: `Unknown memory action: ${args.action}`,
-            timestamp: new Date().toISOString(),
-          };
-      }
-    } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Shared memory operation failed:`,
-        error,
-      );
-      return {
-        success: false,
-        error: error.message,
-        action: args.action,
-        storage_type: this.memoryStore?.isUsingFallback() ? 'in-memory' : 'sqlite',
-        timestamp: new Date().toISOString(),
-      };
-    }
-  }
-
-  async handleMemorySearch(args) {
-    if (!this.memoryStore) {
-      return {
-        success: false,
-        error: 'Memory system not initialized',
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    try {
-      const results = await this.sharedMemory.search(args.pattern, {
-        namespace: args.namespace || 'default',
-        limit: args.limit || 10,
-      });
-
-      return {
-        success: true,
-        pattern: args.pattern,
-        namespace: args.namespace || 'default',
-        results: results,
-        count: results.length,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Memory search failed:`,
-        error,
-      );
-      return {
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      };
-    }
-  }
-
-  async getActiveSwarmId() {
-    try {
-      const activeSwarmId = await this.memoryStore.retrieve('active_swarm', {
-        namespace: 'system',
-      });
-      return activeSwarmId || null;
-    } catch (error) {
-      console.error(
-        `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Failed to get active swarm:`,
-        error,
-      );
-      return null;
-    }
-  }
-
-  createErrorResponse(id, code, message, data = null) {
-    const response = {
-      jsonrpc: '2.0',
-      id,
-      error: { code, message },
-    };
-    if (data) response.error.data = data;
-    return response;
+  createErrorResponse(id, code, message, data) {
+    return { jsonrpc: '2.0', id, error: { code, message, data } };
   }
 }
 
-// Main server execution
 async function startMCPServer() {
   const server = new ClaudeFlowMCPServer();
-
-  console.error(
-    `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${server.sessionId}) Claude-Flow MCP server starting in stdio mode`,
-  );
-  console.error({
-    arch: process.arch,
-    mode: 'mcp-stdio',
-    nodeVersion: process.version,
-    pid: process.pid,
-    platform: process.platform,
-    protocol: 'stdio',
-    sessionId: server.sessionId,
-    version: server.version,
-  });
-
-  // Send server capabilities
-  console.log(
-    JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'server.initialized',
-      params: {
-        serverInfo: {
-          name: 'claude-flow',
-          version: server.version,
-          capabilities: server.capabilities,
-        },
-      },
-    }),
-  );
-
-  // Handle stdin messages
-  let buffer = '';
-
-  process.stdin.on('data', async (chunk) => {
-    buffer += chunk.toString();
-
-    // Process complete JSON messages
-    let lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          const message = JSON.parse(line);
-          const response = await server.handleMessage(message);
-          if (response) {
-            console.log(JSON.stringify(response));
-          }
-        } catch (error) {
-          console.error(
-            `[${new Date().toISOString()}] ERROR [claude-flow-mcp] Failed to parse message:`,
-            error.message,
-          );
-        }
-      }
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', async (data) => {
+    try {
+      const message = JSON.parse(data);
+      const response = await server.handleMessage(message);
+      process.stdout.write(JSON.stringify(response) + '\n');
+    } catch (error) {
+      console.error('Failed to process message:', error);
     }
-  });
-
-  process.stdin.on('end', () => {
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${server.sessionId}) 🔌 Connection closed: ${server.sessionId}`,
-    );
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${server.sessionId}) MCP: stdin closed, shutting down...`,
-    );
-    process.exit(0);
-  });
-
-  // Handle process termination
-  process.on('SIGINT', async () => {
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${server.sessionId}) Received SIGINT, shutting down gracefully...`,
-    );
-    if (server.sharedMemory) {
-      await server.sharedMemory.close();
-    }
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', async () => {
-    console.error(
-      `[${new Date().toISOString()}] INFO [claude-flow-mcp] (${server.sessionId}) Received SIGTERM, shutting down gracefully...`,
-    );
-    if (server.sharedMemory) {
-      await server.sharedMemory.close();
-    }
-    process.exit(0);
   });
 }
 
-// Start the server if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   startMCPServer().catch(console.error);
 }

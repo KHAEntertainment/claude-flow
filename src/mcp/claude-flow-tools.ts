@@ -4,7 +4,7 @@
 
 import type { MCPTool, MCPContext, AgentProfile, Task, MemoryEntry } from '../utils/types.js';
 import type { ILogger } from '../core/logger.js';
-import { getAvailableAgentTypes, getAgentTypeSchema } from '../constants/agent-types.js';
+import { getValidAgentTypes as getAvailableAgentTypes, getAgentTypeSchema } from '../constants/agent-types.js';
 import type { Permissions } from './auth.js';
 
 export interface ClaudeFlowToolContext extends MCPContext {
@@ -15,7 +15,12 @@ export interface ClaudeFlowToolContext extends MCPContext {
  * Enhance tool schema with dynamic agent types
  */
 async function enhanceToolWithAgentTypes(tool: MCPTool): Promise<MCPTool> {
-  const availableTypes = await getAvailableAgentTypes();
+  let availableTypes: string[] = [];
+  try {
+    availableTypes = await getAvailableAgentTypes();
+  } catch (err) {
+    console.warn('Failed to load agent types', err);
+  }
   
   // Clone the tool to avoid modifying the original
   const enhancedTool = JSON.parse(JSON.stringify(tool));
@@ -45,8 +50,13 @@ async function enhanceToolWithAgentTypes(tool: MCPTool): Promise<MCPTool> {
 /**
  * Create all Claude-Flow specific MCP tools
  */
+export interface ClaudeFlowTool extends MCPTool {
+  /** Legacy tool names for backward compatibility */
+  legacyNames?: string[];
+}
+
 export async function createClaudeFlowTools(logger: ILogger): Promise<MCPTool[]> {
-  const tools = [
+  const tools: ClaudeFlowTool[] = [
     // Agent management tools
     createSpawnAgentTool(logger),
     createListAgentsTool(logger),
@@ -88,15 +98,26 @@ export async function createClaudeFlowTools(logger: ILogger): Promise<MCPTool[]>
     createCreateTerminalTool(logger),
   ];
 
+  // Expand tools with legacy name aliases
+  const expanded: MCPTool[] = [];
+  for (const tool of tools) {
+    expanded.push(tool);
+    if ((tool as ClaudeFlowTool).legacyNames) {
+      for (const legacy of (tool as ClaudeFlowTool).legacyNames!) {
+        expanded.push({ ...tool, name: legacy });
+      }
+    }
+  }
+
   // Enhance tools with dynamic agent types
   const enhancedTools = await Promise.all(
-    tools.map(tool => enhanceToolWithAgentTypes(tool))
+    expanded.map((tool) => enhanceToolWithAgentTypes(tool))
   );
 
   return enhancedTools;
 }
 
-function createSpawnAgentTool(logger: ILogger): MCPTool {
+export function createSpawnAgentTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'agents/spawn',
     description: 'Spawn a new Claude agent with specified configuration',
@@ -142,6 +163,7 @@ function createSpawnAgentTool(logger: ILogger): MCPTool {
       },
       required: ['type', 'name'],
     },
+    legacyNames: ['agent_spawn'],
     handler: async (input: any, context?: ClaudeFlowToolContext) => {
       logger.info('Spawning agent', { input, sessionId: context?.sessionId });
 
@@ -174,7 +196,7 @@ function createSpawnAgentTool(logger: ILogger): MCPTool {
   };
 }
 
-function createListAgentsTool(logger: ILogger): MCPTool {
+export function createListAgentsTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'agents/list',
     description: 'List all active agents in the system',
@@ -193,6 +215,7 @@ function createListAgentsTool(logger: ILogger): MCPTool {
         },
       },
     },
+    legacyNames: ['agent_list'],
     handler: async (input: any, context?: ClaudeFlowToolContext) => {
       logger.info('Listing agents', { input, sessionId: context?.sessionId });
 
@@ -221,7 +244,7 @@ function createListAgentsTool(logger: ILogger): MCPTool {
   };
 }
 
-function createTerminateAgentTool(logger: ILogger): MCPTool {
+export function createTerminateAgentTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'agents/terminate',
     description: 'Terminate a specific agent',
@@ -266,7 +289,7 @@ function createTerminateAgentTool(logger: ILogger): MCPTool {
   };
 }
 
-function createGetAgentInfoTool(logger: ILogger): MCPTool {
+export function createGetAgentInfoTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'agents/info',
     description: 'Get detailed information about a specific agent',
@@ -301,7 +324,7 @@ function createGetAgentInfoTool(logger: ILogger): MCPTool {
   };
 }
 
-function createCreateTaskTool(logger: ILogger): MCPTool {
+export function createCreateTaskTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'tasks/create',
     description: 'Create a new task for execution',
@@ -381,7 +404,7 @@ function createCreateTaskTool(logger: ILogger): MCPTool {
   };
 }
 
-function createListTasksTool(logger: ILogger): MCPTool {
+export function createListTasksTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'tasks/list',
     description: 'List tasks with optional filtering',
@@ -437,7 +460,7 @@ function createListTasksTool(logger: ILogger): MCPTool {
   };
 }
 
-function createGetTaskStatusTool(logger: ILogger): MCPTool {
+export function createGetTaskStatusTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'tasks/status',
     description: 'Get detailed status of a specific task',
@@ -472,7 +495,7 @@ function createGetTaskStatusTool(logger: ILogger): MCPTool {
   };
 }
 
-function createCancelTaskTool(logger: ILogger): MCPTool {
+export function createCancelTaskTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'tasks/cancel',
     description: 'Cancel a pending or running task',
@@ -509,7 +532,7 @@ function createCancelTaskTool(logger: ILogger): MCPTool {
   };
 }
 
-function createAssignTaskTool(logger: ILogger): MCPTool {
+export function createAssignTaskTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'tasks/assign',
     description: 'Assign a task to a specific agent',
@@ -546,7 +569,7 @@ function createAssignTaskTool(logger: ILogger): MCPTool {
   };
 }
 
-function createQueryMemoryTool(logger: ILogger): MCPTool {
+export function createQueryMemoryTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'memory/query',
     description: 'Query agent memory with filters and search',
@@ -628,7 +651,7 @@ function createQueryMemoryTool(logger: ILogger): MCPTool {
   };
 }
 
-function createStoreMemoryTool(logger: ILogger): MCPTool {
+export function createStoreMemoryTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'memory/store',
     description: 'Store a new memory entry',
@@ -698,7 +721,7 @@ function createStoreMemoryTool(logger: ILogger): MCPTool {
   };
 }
 
-function createDeleteMemoryTool(logger: ILogger): MCPTool {
+export function createDeleteMemoryTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'memory/delete',
     description: 'Delete a memory entry',
@@ -730,7 +753,7 @@ function createDeleteMemoryTool(logger: ILogger): MCPTool {
   };
 }
 
-function createExportMemoryTool(logger: ILogger): MCPTool {
+export function createExportMemoryTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'memory/export',
     description: 'Export memory entries to a file',
@@ -786,7 +809,7 @@ function createExportMemoryTool(logger: ILogger): MCPTool {
   };
 }
 
-function createImportMemoryTool(logger: ILogger): MCPTool {
+export function createImportMemoryTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'memory/import',
     description: 'Import memory entries from a file',
@@ -833,7 +856,7 @@ function createImportMemoryTool(logger: ILogger): MCPTool {
   };
 }
 
-function createGetSystemStatusTool(logger: ILogger): MCPTool {
+export function createGetSystemStatusTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'system/status',
     description: 'Get comprehensive system status information',
@@ -858,7 +881,7 @@ function createGetSystemStatusTool(logger: ILogger): MCPTool {
   };
 }
 
-function createGetMetricsTool(logger: ILogger): MCPTool {
+export function createGetMetricsTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'system/metrics',
     description: 'Get system performance metrics',
@@ -891,7 +914,7 @@ function createGetMetricsTool(logger: ILogger): MCPTool {
   };
 }
 
-function createHealthCheckTool(logger: ILogger): MCPTool {
+export function createHealthCheckTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'system/health',
     description: 'Perform a comprehensive health check',
@@ -922,7 +945,7 @@ function createHealthCheckTool(logger: ILogger): MCPTool {
   };
 }
 
-function createGetConfigTool(logger: ILogger): MCPTool {
+export function createGetConfigTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'config/get',
     description: 'Get current system configuration',
@@ -954,7 +977,7 @@ function createGetConfigTool(logger: ILogger): MCPTool {
   };
 }
 
-function createUpdateConfigTool(logger: ILogger): MCPTool {
+export function createUpdateConfigTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'config/update',
     description: 'Update system configuration',
@@ -999,7 +1022,7 @@ function createUpdateConfigTool(logger: ILogger): MCPTool {
   };
 }
 
-function createValidateConfigTool(logger: ILogger): MCPTool {
+export function createValidateConfigTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'config/validate',
     description: 'Validate a configuration object',
@@ -1030,7 +1053,7 @@ function createValidateConfigTool(logger: ILogger): MCPTool {
   };
 }
 
-function createExecuteWorkflowTool(logger: ILogger): MCPTool {
+export function createExecuteWorkflowTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'workflow/execute',
     description: 'Execute a workflow from a file or definition',
@@ -1076,7 +1099,7 @@ function createExecuteWorkflowTool(logger: ILogger): MCPTool {
   };
 }
 
-function createCreateWorkflowTool(logger: ILogger): MCPTool {
+export function createCreateWorkflowTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'workflow/create',
     description: 'Create a new workflow definition',
@@ -1141,7 +1164,7 @@ function createCreateWorkflowTool(logger: ILogger): MCPTool {
   };
 }
 
-function createListWorkflowsTool(logger: ILogger): MCPTool {
+export function createListWorkflowsTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'workflow/list',
     description: 'List available workflows',
@@ -1172,7 +1195,7 @@ function createListWorkflowsTool(logger: ILogger): MCPTool {
   };
 }
 
-function createExecuteCommandTool(logger: ILogger): MCPTool {
+export function createExecuteCommandTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'terminal/execute',
     description: 'Execute a command in a terminal session',
@@ -1232,7 +1255,7 @@ function createExecuteCommandTool(logger: ILogger): MCPTool {
   };
 }
 
-function createListTerminalsTool(logger: ILogger): MCPTool {
+export function createListTerminalsTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'terminal/list',
     description: 'List all terminal sessions',
@@ -1264,7 +1287,7 @@ function createListTerminalsTool(logger: ILogger): MCPTool {
   };
 }
 
-function createCreateTerminalTool(logger: ILogger): MCPTool {
+export function createCreateTerminalTool(logger: ILogger): ClaudeFlowTool {
   return {
     name: 'terminal/create',
     description: 'Create a new terminal session',
