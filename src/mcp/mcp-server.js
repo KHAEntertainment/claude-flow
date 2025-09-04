@@ -7,6 +7,7 @@
 import { createClaudeFlowTools } from './claude-flow-tools.js';
 import { memoryStore } from '../memory/fallback-store.js';
 import { ToolGateController } from '../gating/toolset-registry.js';
+import { optimizeTool } from '../gating/schema-optimizer.js';
 
 class ClaudeFlowMCPServer {
   constructor() {
@@ -37,7 +38,7 @@ class ClaudeFlowMCPServer {
 
   // Database operations now use the same memory store as working npx commands
   getDiscoveryTools() {
-    return {
+    const tools = {
       discover_toolsets: {
         name: 'discover_toolsets',
         description: 'List available toolsets',
@@ -79,6 +80,10 @@ class ClaudeFlowMCPServer {
         handler: async () => ({ tools: this.gateController.listActiveTools() }),
       },
     };
+    for (const key of Object.keys(tools)) {
+      tools[key] = optimizeTool(tools[key]);
+    }
+    return tools;
   }
 
   initializeTools() {
