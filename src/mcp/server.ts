@@ -30,11 +30,10 @@ import { LoadBalancer, ILoadBalancer, RequestQueue } from './load-balancer.js';
 import { createClaudeFlowTools, ClaudeFlowToolContext } from './claude-flow-tools.js';
 import { platform, arch } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import fs from 'node:fs';
+import * as fs from 'node:fs';
 import ToolGateController from '../gating/toolset-registry.js';
-import filterConfigDefault from '../gating/filter-config.json' assert { type: 'json' };
+import filterConfigDefault from '../gating/filter-config.json' with { type: 'json' };
 import { optimizeTool } from '../gating/schema-optimizer.js';
-
 export interface IMCPServer {
   start(): Promise<void>;
   stop(): Promise<void>;
