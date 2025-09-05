@@ -503,10 +503,13 @@ export class MCPServer implements IMCPServer {
       handler: async () => {
         const discovery = this.toolRegistry
           .listTools()
-          .filter((t) => !this.gateTools.has(t.name));
-        const gated = Object.values(this.gateController.getAvailableTools()).map(
-          (t) => ({ name: t.name, description: t.description })
-        );
+          .filter((t) => !this.gateTools.has(t.name))
+          .map((t) => ({ name: t.name, description: t.description }));
+        const context = this.currentSession ? { sessionId: this.currentSession.id } : {};
+        const gated = Object.values(this.gateController.getAvailableTools(context)).map(t => ({
+          name: t.name,
+          description: t.description,
+        }));
         return [...discovery, ...gated];
       },
     });
