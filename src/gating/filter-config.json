@@ -4,7 +4,7 @@
     "map": {}
   },
   "resource": {
-    "enabled": false,
+    "enabled": true,
     "maxTools": 10
   },
   "security": {

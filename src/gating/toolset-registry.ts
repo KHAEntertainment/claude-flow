@@ -5,6 +5,7 @@ import { ResourceFilter } from './filters/ResourceFilter.js';
 import { SecurityFilter } from './filters/SecurityFilter.js';
 import type { ToolFilter, FilterContext } from './filters/types.js';
 import { optimizeTool } from './schema-optimizer.js';
+import filterConfigDefault from './filter-config.json' assert { type: 'json' };
 
 export type ToolsetLoader = () => Promise<Record<string, MCPTool>>;
 
