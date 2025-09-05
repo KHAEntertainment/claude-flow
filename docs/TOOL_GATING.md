@@ -17,12 +17,6 @@ The server always exposes a small set of discovery tools:
 Example session enabling the built-in `claude` toolset and inspecting
 the active list:
 
-```bash
-claude-flow mcp tools --list  # shows only discovery tools
-claude-flow mcp call gate/enable_toolset '{"name":"claude"}'
-claude-flow mcp tools --list  # now includes Claude Flow tools
-claude-flow mcp call gate/disable_toolset '{"name":"claude"}'
-```
 
 The resource filter limits the number of tools returned from a toolset.
 By default only the first 10 Claude Flow tools are enabled; additional
