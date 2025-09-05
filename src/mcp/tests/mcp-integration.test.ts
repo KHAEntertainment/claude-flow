@@ -135,9 +135,35 @@ describe('MCP Server', () => {
       server.registerTool(tool2);
 
       const tools = (server as any).toolRegistry.listTools();
-      expect(tools).toHaveLength(2 + 4); // 2 custom + 4 built-in tools
+      expect(tools).toHaveLength(2 + 8); // 2 custom + 8 built-in tools
       expect(tools.some((t: any) => t.name === 'test/tool1')).toBe(true);
       expect(tools.some((t: any) => t.name === 'test/tool2')).toBe(true);
+    });
+  });
+
+  describe('Tool Gating', () => {
+    beforeEach(async () => {
+      await server.start();
+    });
+
+    it('enables and disables toolsets via gate controller', async () => {
+      const initial = (server as any).toolRegistry.listTools().map((t: any) => t.name);
+      expect(initial).toEqual(
+        expect.arrayContaining([
+          'gate/discover_toolsets',
+          'gate/enable_toolset',
+          'gate/disable_toolset',
+          'gate/list_active_tools',
+        ])
+      );
+      await (server as any).toolRegistry.executeTool('gate/enable_toolset', { name: 'claude' });
+      const afterEnable = (server as any).toolRegistry.listTools();
+      expect(afterEnable.length).toBeGreaterThan(initial.length);
+      // Resource filter limits to 10 Claude tools
+      expect(afterEnable.length).toBeLessThanOrEqual(initial.length + 10);
+      await (server as any).toolRegistry.executeTool('gate/disable_toolset', { name: 'claude' });
+      const afterDisable = (server as any).toolRegistry.listTools();
+      expect(afterDisable.length).toBe(initial.length);
     });
   });
 

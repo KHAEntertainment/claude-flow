@@ -28,16 +28,12 @@ import { SessionManager, ISessionManager } from './session-manager.js';
 import { AuthManager, IAuthManager } from './auth.js';
 import { LoadBalancer, ILoadBalancer, RequestQueue } from './load-balancer.js';
 import { createClaudeFlowTools, ClaudeFlowToolContext } from './claude-flow-tools.js';
-import { createSwarmTools, SwarmToolContext } from './swarm-tools.js';
-import {
-  createRuvSwarmTools,
-  RuvSwarmToolContext,
-  isRuvSwarmAvailable,
-  initializeRuvSwarmIntegration,
-} from './ruv-swarm-tools.js';
 import { platform, arch } from 'node:os';
 import { performance } from 'node:perf_hooks';
-
+import * as fs from 'node:fs';
+import ToolGateController from '../gating/toolset-registry.js';
+import filterConfigDefault from '../gating/filter-config.json' with { type: 'json' };
+import { optimizeTool } from '../gating/schema-optimizer.js';
 export interface IMCPServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -66,6 +62,8 @@ export class MCPServer implements IMCPServer {
   private requestQueue?: RequestQueue;
   private running = false;
   private currentSession?: MCPSession | undefined;
+  private gateController: ToolGateController;
+  private gateTools = new Set<string>();
 
   private readonly serverInfo = {
     name: 'Claude-Flow MCP Server',
@@ -110,6 +108,33 @@ export class MCPServer implements IMCPServer {
 
     // Initialize tool registry
     this.toolRegistry = new ToolRegistry(logger);
+
+    // Initialize gate controller with runtime filter config
+    const filterConfig = this.loadFilterConfig();
+    this.gateController = new ToolGateController(
+      {
+        claude: async () => {
+          const tools = await createClaudeFlowTools(this.logger);
+          for (const tool of tools) {
+            const originalHandler = tool.handler;
+            tool.handler = async (input: unknown, context?: MCPContext) => {
+              const claudeContext: ClaudeFlowToolContext = {
+                ...context,
+                orchestrator: this.orchestrator,
+              } as ClaudeFlowToolContext;
+              return await originalHandler(input, claudeContext);
+            };
+          }
+          return Object.fromEntries(tools.map((t) => [t.name, t]));
+        },
+      },
+      filterConfig
+    );
+
+    // Register discovery tools
+    for (const tool of this.getDiscoveryTools()) {
+      this.registerTool(tool);
+    }
 
     // Initialize session manager
     this.sessionManager = new SessionManager(config, logger);
@@ -476,7 +501,16 @@ export class MCPServer implements IMCPServer {
         properties: {},
       },
       handler: async () => {
-        return this.toolRegistry.listTools();
+        const discovery = this.toolRegistry
+          .listTools()
+          .filter((t) => !this.gateTools.has(t.name))
+          .map((t) => ({ name: t.name, description: t.description }));
+        const context = this.currentSession ? { sessionId: this.currentSession.id } : {};
+        const gated = Object.values(this.gateController.getAvailableTools(context)).map(t => ({
+          name: t.name,
+          description: t.description,
+        }));
+        return [...discovery, ...gated];
       },
     });
 
@@ -503,113 +537,88 @@ export class MCPServer implements IMCPServer {
         };
       },
     });
-
-    // Register Claude-Flow specific tools if orchestrator is available
-    if (this.orchestrator) {
-      const claudeFlowTools = await createClaudeFlowTools(this.logger);
-
-      for (const tool of claudeFlowTools) {
-        // Wrap the handler to inject orchestrator context
-        const originalHandler = tool.handler;
-        tool.handler = async (input: unknown, context?: MCPContext) => {
-          const claudeFlowContext: ClaudeFlowToolContext = {
-            ...context,
-            orchestrator: this.orchestrator,
-          } as ClaudeFlowToolContext;
-
-          return await originalHandler(input, claudeFlowContext);
-        };
-
-        this.registerTool(tool);
-      }
-
-      this.logger.info('Registered Claude-Flow tools', { count: claudeFlowTools.length });
-    } else {
-      this.logger.warn('Orchestrator not available - Claude-Flow tools not registered');
-    }
-
-    // Register Swarm-specific tools if swarm components are available
-    if (this.swarmCoordinator || this.agentManager || this.resourceManager) {
-      const swarmTools = createSwarmTools(this.logger);
-
-      for (const tool of swarmTools) {
-        // Wrap the handler to inject swarm context
-        const originalHandler = tool.handler;
-        tool.handler = async (input: unknown, context?: MCPContext) => {
-          const swarmContext: SwarmToolContext = {
-            ...context,
-            swarmCoordinator: this.swarmCoordinator,
-            agentManager: this.agentManager,
-            resourceManager: this.resourceManager,
-            messageBus: this.messagebus,
-            monitor: this.monitor,
-          } as SwarmToolContext;
-
-          return await originalHandler(input, swarmContext);
-        };
-
-        this.registerTool(tool);
-      }
-
-      this.logger.info('Registered Swarm tools', { count: swarmTools.length });
-    } else {
-      this.logger.warn('Swarm components not available - Swarm tools not registered');
-    }
-
-    // Register ruv-swarm MCP tools if available
-    this.registerRuvSwarmTools();
   }
 
-  /**
-   * Register ruv-swarm MCP tools if available
-   */
-  private async registerRuvSwarmTools(): Promise<void> {
-    try {
-      // Check if ruv-swarm is available
-      const available = await isRuvSwarmAvailable(this.logger);
-
-      if (!available) {
-        this.logger.info('ruv-swarm not available - skipping ruv-swarm MCP tools registration');
-        return;
+  private loadFilterConfig(): typeof filterConfigDefault {
+    const configPath = process.env.TOOL_FILTER_CONFIG;
+    if (configPath) {
+      try {
+        const raw = fs.readFileSync(configPath, 'utf8');
+        return JSON.parse(raw);
+      } catch (err) {
+        this.logger.warn('Failed to load filter config', { error: err });
       }
+    }
+    return filterConfigDefault;
+  }
 
-      // Initialize ruv-swarm integration
-      const workingDirectory = process.cwd();
-      const integration = await initializeRuvSwarmIntegration(workingDirectory, this.logger);
+  private getDiscoveryTools(): MCPTool[] {
+    const tools: MCPTool[] = [
+      {
+        name: 'gate/discover_toolsets',
+        description: 'List available toolsets',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => ({
+          toolsets: this.gateController.discoverToolsets(),
+        }),
+      },
+      {
+        name: 'gate/enable_toolset',
+        description: 'Enable a toolset by name',
+        inputSchema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+        handler: async ({ name }) => {
+          await this.gateController.enableToolset(name);
+          this.syncGateTools();
+          return { tools: this.gateController.listActiveTools() };
+        },
+      },
+      {
+        name: 'gate/disable_toolset',
+        description: 'Disable a toolset by name',
+        inputSchema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+        handler: async ({ name }) => {
+          this.gateController.disableToolset(name);
+          this.syncGateTools();
+          return { tools: this.gateController.listActiveTools() };
+        },
+      },
+      {
+        name: 'gate/list_active_tools',
+        description: 'List currently active tools',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => ({ tools: this.gateController.listActiveTools() }),
+      },
+    ];
+    return tools.map(optimizeTool);
+  }
 
-      if (!integration.success) {
-        this.logger.warn('Failed to initialize ruv-swarm integration', {
-          error: integration.error,
-        });
-        return;
+  private syncGateTools(): void {
+    const available = this.gateController.getAvailableTools();
+    const names = new Set(Object.keys(available));
+
+    for (const name of Array.from(this.gateTools)) {
+      if (!names.has(name)) {
+        this.toolRegistry.unregister(name);
+        this.gateTools.delete(name);
       }
+    }
 
-      // Create ruv-swarm tools
-      const ruvSwarmTools = createRuvSwarmTools(this.logger);
-
-      for (const tool of ruvSwarmTools) {
-        // Wrap the handler to inject ruv-swarm context
-        const originalHandler = tool.handler;
-        tool.handler = async (input: unknown, context?: MCPContext) => {
-          const ruvSwarmContext: RuvSwarmToolContext = {
-            ...context,
-            workingDirectory,
-            sessionId: `mcp-session-${Date.now()}`,
-            swarmId: process.env.CLAUDE_SWARM_ID || `mcp-swarm-${Date.now()}`,
-          };
-
-          return await originalHandler(input, ruvSwarmContext);
-        };
-
-        this.registerTool(tool);
+    for (const [name, tool] of Object.entries(available)) {
+      if (!name.includes('/')) {
+        continue;
       }
-
-      this.logger.info('Registered ruv-swarm MCP tools', {
-        count: ruvSwarmTools.length,
-        integration: integration.data,
-      });
-    } catch (error) {
-      this.logger.error('Error registering ruv-swarm MCP tools', error);
+      if (!this.gateTools.has(name)) {
+        this.toolRegistry.register(tool);
+        this.gateTools.add(name);
+      }
     }
   }
 

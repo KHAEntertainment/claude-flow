@@ -43,6 +43,26 @@ async function showMcpStatus(subArgs, flags) {
   console.log('🔐 Authentication: Not configured');
 }
 
+/**
+ * Start the Claude Flow MCP server either in stdio (default) or HTTP mode.
+ *
+ * In stdio mode this will attempt to spawn the bundled MCP server script as a child
+ * Node process (path: ../../mcp/server.js), set environment flags (auto-orchestrator,
+ * neural and WASM enabled), and then keep the parent process alive. If the server
+ * script is missing or startup fails the function logs a fallback status summary.
+ *
+ * In HTTP mode (not implemented) it reports the host:port that would be used.
+ *
+ * @async
+ * @param {string[]} subArgs - Raw CLI sub-arguments; used to detect flags such as
+ *                             --stdio, --daemon, --auto-orchestrator, --port and --host.
+ * @param {Object} flags - Parsed flags object (e.g., { stdio, daemon, autoOrchestrator, port, host }).
+ *                         Values here are used when corresponding values are not present in subArgs.
+ *
+ * Side effects:
+ * - Spawns a child Node process when starting in stdio mode and inherits stdio.
+ * - May log errors and diagnostic information if the server script is missing or if startup fails.
+ */
 async function startMcpServer(subArgs, flags) {
   const autoOrchestrator = subArgs.includes('--auto-orchestrator') || flags.autoOrchestrator;
   const daemon = subArgs.includes('--daemon') || flags.daemon;
@@ -68,7 +88,7 @@ async function startMcpServer(subArgs, flags) {
 
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
-      const mcpServerPath = path.join(__dirname, '../../mcp/mcp-server.js');
+      const mcpServerPath = path.join(__dirname, '../../mcp/server.js');
 
       // Check if the file exists, and log the path for debugging
       const fs = await import('fs');
