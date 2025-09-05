@@ -1,9 +1,9 @@
 # Tool Gating in Claude-Flow
 
 The MCP server uses a **ToolGateController** to load tools on demand and
-apply filters before exposing them to clients. Tool sets remain disabled
-until explicitly enabled via discovery tools, reducing context size and
-providing a single source of truth for tool definitions.
+apply filters before exposing them to clients. Toolsets remain disabled
+until explicitly enabled via discovery tools. This reduces context size and
+provides a single source of truth for tool definitions.
 
 ## Discovery Tools
 
