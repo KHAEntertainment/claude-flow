@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from '../../test.utils';
-import { ToolGateController } from '../../../src/gating/toolset-registry.ts';
-import type { MCPTool } from '../../../src/utils/types.ts';
+import { ToolGateController } from '../../../src/gating/toolset-registry.js';
+import type { MCPTool } from '../../../src/utils/types.js';
 
 const createTool = (name: string): MCPTool => ({
   name,
