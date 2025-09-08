@@ -44,6 +44,12 @@ describe('Proxy-Core Architecture Stress Tests', () => {
     await proxyServer.start();
   });
 
+  afterEach(async () => {
+    if (proxyServer) {
+      await proxyServer.stop();
+    }
+  });
+
   afterAll(async () => {
     if (proxyServer) {
       await proxyServer.stop();
