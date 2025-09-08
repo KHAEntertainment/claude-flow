@@ -33,16 +33,26 @@ describe('Proxy Server Integration Tests', () => {
     logger = new Logger('TestProxyServer');
   });
 
-  beforeEach(async () => {
-    // Create a fresh proxy server for each test
-    proxyServer = new ProxyServer(testConfig, eventBus, logger);
-  });
+// tests/integration/proxy-workflow.test.ts
 
-  afterAll(async () => {
-    if (proxyServer) {
-      await proxyServer.stop();
-    }
-  });
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+
+beforeEach(async () => {
+  // Create a fresh proxy server for each test
+  proxyServer = new ProxyServer(testConfig, eventBus, logger);
+});
+
+afterEach(async () => {
+  if (proxyServer) {
+    await proxyServer.stop().catch(() => {});
+  }
+});
+
+afterAll(async () => {
+  if (proxyServer) {
+    await proxyServer.stop();
+  }
+});
 
   describe('Server Startup and Discovery', () => {
     it('should start the proxy server successfully', async () => {
