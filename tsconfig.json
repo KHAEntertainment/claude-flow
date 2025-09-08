@@ -35,7 +35,8 @@
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
@@ -44,7 +45,6 @@
     "**/*.spec.ts",
     "**/*.test.js",
     "**/*.spec.js",
-    "tests/**/*",
     "deno_modules",
     "bin",
     "src/terminal/vscode-bridge.ts"
