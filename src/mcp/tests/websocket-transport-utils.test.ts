@@ -305,18 +305,17 @@ describe('WebSocket Transport Utilities', () => {
       expect(mockUtils.calculateBackoffDelay).toHaveBeenCalledWith(attempt, baseDelay);
     });
 
-    it('should add jitter to prevent thundering herd', () => {
-      const attempt = 2;
-      const baseDelay = 100;
-      const expectedDelay = jasmine.any(Number);
-      
-      mockUtils.calculateBackoffDelay.mockReturnValue(400);
-      
-      const result = WebSocketTransportUtils.calculateBackoffDelay(attempt, baseDelay);
-      
-      expect(result).toEqual(jasmine.any(Number));
-      expect(mockUtils.calculateBackoffDelay).toHaveBeenCalledWith(attempt, baseDelay);
-    });
+it('should add jitter to prevent thundering herd', () => {
+  const attempt = 2;
+  const baseDelay = 100;
+
+  mockUtils.calculateBackoffDelay.mockReturnValue(400);
+
+  const result = WebSocketTransportUtils.calculateBackoffDelay(attempt, baseDelay);
+
+  expect(result).toEqual(expect.any(Number));
+  expect(mockUtils.calculateBackoffDelay).toHaveBeenCalledWith(attempt, baseDelay);
+});
   });
 
   describe('Error Handling', () => {
