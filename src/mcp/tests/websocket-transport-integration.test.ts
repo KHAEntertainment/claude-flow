@@ -246,8 +246,10 @@ describe('WebSocket Transport Integration Tests', () => {
         result: { success: true }
       });
       
-      // Verify client was notified
-      expect(mockMcpClient.sendRequest).toHaveBeenCalledWith(clientRequest);
+      // Verify the request was sent on the wire
+      expect(
+        mockWebSocketInstance.sent.some(s => JSON.parse(s).id === 'client-request')
+      ).toBe(true);
       
       // Send notification through transport
       const clientNotification: MCPNotification = {
@@ -258,13 +260,14 @@ describe('WebSocket Transport Integration Tests', () => {
 
       await transport.sendNotification(clientNotification);
       
-      // Verify client was notified
-      expect(mockMcpClient.sendNotification).toHaveBeenCalledWith(clientNotification);
+      // Verify the notification was sent on the wire
+      expect(
+        mockWebSocketInstance.sent.some(s => JSON.parse(s).method === 'client/notification')
+      ).toBe(true);
       
       // Simulate client disconnecting
       await mockMcpClient.disconnect();
     });
-
     it('should handle client request timeouts', async () => {
       const timeoutConfig = { ...config, timeout: 10 };
       const timeoutTransport = new WebSocketTransport(timeoutConfig, mockLogger);
