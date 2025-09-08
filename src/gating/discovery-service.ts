@@ -46,11 +46,16 @@ export class DiscoveryService {
 
   async provisionTools(options: ProvisionOptions): Promise<MCPTool[]> {
     const { tools, maxTokens } = options;
+    if (!Number.isFinite(maxTokens) || maxTokens <= 0) return [];
     let currentTokens = 0;
     const provisionedTools: MCPTool[] = [];
 
     for (const tool of tools) {
-      const toolTokens = this.calculateTokenSize(tool);
+      const toolTokens = Math.max(1, Math.ceil(this.calculateTokenSize(tool)));
+      if (toolTokens > maxTokens) {
+        // Skip tools that can never fit
+        continue;
+      }
       if (currentTokens + toolTokens <= maxTokens) {
         provisionedTools.push(tool);
         currentTokens += toolTokens;
