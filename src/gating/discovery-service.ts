@@ -20,9 +20,26 @@ export class DiscoveryService {
     // In a real implementation, this would use a semantic search engine
     // For now, we'll use a simple keyword search
     const allTools = this.toolRepository.getAllTools();
-    const filteredTools = allTools.filter(tool =>
-      tool.description.toLowerCase().includes(query.toLowerCase())
-    );
+    const q = (query ?? '').trim().toLowerCase();
+    // Prefer indexed search; default to excluding deprecated tools
+    let results = this.toolRepository.searchTools({ includeDeprecated: false });
+
+    if (q) {
+      results = results.filter(tool => {
+        const haystacks = [
+          tool.name,
+          tool.description,
+          ...(tool.categories ?? []),
+          ...(tool.capabilities ?? []),
+        ]
+          .filter(Boolean)
+          .map(s => s.toLowerCase());
+        return haystacks.some(h => h.includes(q));
+      });
+    }
+
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
+    return results.slice(0, safeLimit);
 
     return filteredTools.slice(0, limit);
   }
