@@ -26,11 +26,14 @@ class MockWebSocket extends EventEmitter {
     this.sent.push(data);
     // Simulate successful send with minimal delay
     setImmediate(() => {
-      this.emit('message', Buffer.from(JSON.stringify({
-        jsonrpc: '2.0',
-        id: JSON.parse(data).id,
-        result: { success: true }
-      })));
+      const parsed = JSON.parse(data);
+      if (parsed && parsed.id !== undefined) {
+        this.emit('message', Buffer.from(JSON.stringify({
+          jsonrpc: '2.0',
+          id: parsed.id,
+          result: { success: true }
+        })));
+      }
     });
   }
 
