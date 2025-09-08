@@ -316,11 +316,10 @@ Run performance benchmarks to validate improvements:
 
 ```bash
 # Run performance benchmarks
-npm run benchmark:performance
+npm run test:performance
 
 # Compare with baseline
-npm run benchmark:compare -- --baseline=monolithic --target=proxy
-```
+npm run test:benchmark -- --baseline=monolithic --target=proxy
 
 Expected improvements:
 - **Context Size**: 80-90% reduction
