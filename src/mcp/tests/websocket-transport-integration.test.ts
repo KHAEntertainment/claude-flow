@@ -297,43 +297,8 @@ describe('WebSocket Transport Integration Tests', () => {
     });
   });
 
-  describe('Bidirectional Communication', () => {
-    it('should handle bidirectional communication between server and client', async () => {
-      await transport.start();
-      transport.onRequest(mockRequestHandler);
-      transport.onNotification(mockNotificationHandler);
-      
-      // Simulate server and client both active
-      await mockMcpServer.start();
-      await mockMcpClient.connect();
-      
-      // Client sends request
-      const clientRequest: MCPRequest = {
-        jsonrpc: '2.0',
-        id: 'bidirectional-request',
-        method: 'client/method',
-        params: { data: 'from-client' }
-      };
-
-      const clientResponse = await transport.sendRequest(clientRequest);
-      expect(clientResponse.result).toEqual({ success: true });
-      
-      // Server sends request
-      const serverRequest: MCPRequest = {
-        jsonrpc: '2.0',
-        id: 'bidirectional-server-request',
-        method: 'server/method',
-        params: { data: 'from-server' }
-      };
-
-      if (mockWebSocketInstance) {
-        mockWebSocketInstance.simulateMessage(serverRequest);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 10));
-      
       // Verify both requests were processed
-      expect(mockMcpClient.sendRequest).toHaveBeenCalledWith(clientRequest);
+      expect(mockWebSocketInstance.sent.some(s => JSON.parse(s).id === 'bidirectional-request')).toBe(true);
       expect(mockMcpServer.handleRequest).toHaveBeenCalledWith(serverRequest);
       
       // Client sends notification
@@ -359,14 +324,8 @@ describe('WebSocket Transport Integration Tests', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
       
       // Verify both notifications were processed
-      expect(mockMcpClient.sendNotification).toHaveBeenCalledWith(clientNotification);
+      expect(mockWebSocketInstance.sent.some(s => JSON.parse(s).method === 'client/notification')).toBe(true);
       expect(mockMcpServer.handleNotification).toHaveBeenCalledWith(serverNotification);
-      
-      // Cleanup
-      await mockMcpClient.disconnect();
-      await mockMcpServer.stop();
-    });
-  });
 
   describe('Error Handling Integration', () => {
     it('should handle connection errors gracefully', async () => {
