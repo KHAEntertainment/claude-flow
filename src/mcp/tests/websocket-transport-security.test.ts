@@ -127,7 +127,7 @@ describe('WebSocket Transport Security Tests', () => {
       const malformedJson = '{ invalid json }';
       
       if (mockWebSocketInstance) {
-        mockWebSocketInstance.simulateMessage(malformedJson);
+        mockWebSocketInstance.simulateRawMessage(malformedJson);
       }
 
       await new Promise(resolve => setTimeout(resolve, 10));
