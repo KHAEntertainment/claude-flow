@@ -87,12 +87,28 @@ export class InMemoryToolRepository {
   }
 
   removeTool(name: string): boolean {
-    if (this.tools.delete(name)) {
-      // Clean up categories and capabilities if needed
-      // For simplicity, we can rebuild them, but for efficiency, remove from lists
-      return true;
+    const existing = this.tools.get(name);
+    if (!existing) return false;
+
+    // Deindex categories
+    if (existing.categories?.length) {
+      for (const category of existing.categories) {
+        const set = this.categories.get(category);
+        set?.delete(name);
+        if (set && set.size === 0) this.categories.delete(category);
+      }
     }
-    return false;
+    // Deindex capabilities
+    if (existing.capabilities?.length) {
+      for (const capability of existing.capabilities) {
+        const set = this.capabilities.get(capability);
+        set?.delete(name);
+        if (set && set.size === 0) this.capabilities.delete(capability);
+      }
+    }
+
+    this.tools.delete(name);
+    return true;
   }
 
   clearRepository(): void {
