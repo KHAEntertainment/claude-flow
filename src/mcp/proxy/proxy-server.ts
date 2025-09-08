@@ -38,14 +38,22 @@ export class ProxyServer {
   ) {
     // Initialize components
     this.toolRepository = new InMemoryToolRepository();
-    this.clientManager = new MCPClientManager(logger);
+    // Wire up client manager with eventBus and logger
+   this.clientManager = new MCPClientManager(this.eventBus, this.logger);
+
     this.discoveryService = new DiscoveryService(this.toolRepository);
     this.gatingService = new GatingService(this.discoveryService);
-    this.proxyService = new ProxyService(this.clientManager, this.toolRepository, logger);
+
+    // Pass toolRepository, clientManager, eventBus, and logger in the correct order
+   this.proxyService = new ProxyService(
+     this.toolRepository,
+     this.clientManager,
+     this.eventBus,
+     this.logger
+   );
 
     // Initialize the MCP server
     this.mcpServer = new MCPServer(config, eventBus, logger);
-  }
 
   async start(): Promise<void> {
     this.logger.info('Starting Proxy MCP Server');
