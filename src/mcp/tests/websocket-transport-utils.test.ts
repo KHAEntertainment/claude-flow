@@ -21,14 +21,18 @@ const mockUtils = {
 let WebSocketTransportUtils: any;
 
 describe('WebSocket Transport Utilities', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    jest.resetModules();
     jest.clearAllMocks();
-    
-    // Mock the utilities module
-    jest.doMock('../transports/websocket-utils.js', () => mockUtils);
-    
-    // Import the utilities dynamically
-    WebSocketTransportUtils = require('../transports/websocket-utils.js');
+    await jest.unstable_mockModule('../transports/websocket-utils.js', () => ({
+      validateWebSocketConfig: mockUtils.validateWebSocketConfig,
+      parseWebSocketMessage: mockUtils.parseWebSocketMessage,
+      formatWebSocketMessage: mockUtils.formatWebSocketMessage,
+      calculateBackoffDelay: mockUtils.calculateBackoffDelay,
+      isWebSocketError: mockUtils.isWebSocketError,
+      sanitizeUrl: mockUtils.sanitizeUrl,
+    }));
+    WebSocketTransportUtils = await import('../transports/websocket-utils.js');
   });
 
   describe('Configuration Validation', () => {
