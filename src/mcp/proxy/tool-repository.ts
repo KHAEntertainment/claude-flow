@@ -73,12 +73,12 @@ export class InMemoryToolRepository {
   }
 
   getToolsByCategory(category: string): MCPTool[] {
-    const toolNames = this.categories.get(category) || [];
+    const toolNames = Array.from(this.categories.get(category) ?? []);
     return toolNames.map(name => this.getTool(name)).filter(Boolean) as MCPTool[];
   }
 
   getToolsByCapability(capability: string): MCPTool[] {
-    const toolNames = this.capabilities.get(capability) || [];
+    const toolNames = Array.from(this.capabilities.get(capability) ?? []);
     return toolNames.map(name => this.getTool(name)).filter(Boolean) as MCPTool[];
   }
 
