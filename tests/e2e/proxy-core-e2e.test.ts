@@ -44,6 +44,12 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
     await proxyServer.start();
   });
 
+  afterEach(async () => {
+    if (proxyServer) {
+      await proxyServer.stop();
+    }
+  });
+
   afterAll(async () => {
     if (proxyServer) {
       await proxyServer.stop();
