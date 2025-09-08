@@ -1,6 +1,6 @@
 import { describe, it, expect } from '../../test.utils';
-import { optimizeTool } from '../../../src/gating/schema-optimizer.ts';
-import type { MCPTool } from '../../../src/utils/types.ts';
+import { optimizeTool } from '../../../src/gating/schema-optimizer.js';
+import type { MCPTool } from '../../../src/utils/types.js';
 
 describe('schema optimizer', () => {
   it('truncates descriptions and strips schema extras', () => {
