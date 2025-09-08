@@ -20,6 +20,7 @@ class MockWebSocket extends EventEmitter {
   constructor(url: string) {
     super();
     this.url = url;
+    process.nextTick(() => this.emit('open'));
   }
 
   send(data: string): void {
