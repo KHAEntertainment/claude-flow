@@ -46,7 +46,14 @@ class MockWebSocket extends EventEmitter {
 
   // Simulate receiving a message
   simulateMessage(message: any): void {
-    this.emit('message', Buffer.from(JSON.stringify(message)));
+    if (typeof message === 'string' || Buffer.isBuffer(message)) {
+      this.emit('message', Buffer.isBuffer(message) ? message : Buffer.from(message));
+    } else {
+      this.emit('message', Buffer.from(JSON.stringify(message)));
+    }
+  }
+  simulateRawMessage(raw: string | Buffer): void {
+    this.emit('message', Buffer.isBuffer(raw) ? raw : Buffer.from(raw));
   }
 }
 
