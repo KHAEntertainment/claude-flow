@@ -508,9 +508,9 @@ export class MCPServer implements IMCPServer {
             description: 'Query to discover tools for provisioning'
           },
           maxTokens: { 
-            type: 'number', 
+            type: 'integer',
             description: 'Maximum token budget for provisioned tools',
-            minimum: 100,
+            minimum: 0,
             maximum: 100000
           }
         },
