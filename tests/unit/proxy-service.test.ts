@@ -289,9 +289,11 @@ describe('ProxyService', () => {
       });
 
       // Mock the client manager with a delay
-      const mockExecuteTool = jest.fn().mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => 
-          resolve({ success: true, data: { result: 'test result' } }), 50)
+      const mockExecuteTool = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ success: true, data: { result: 'test result' } }), 50)
+          )
       );
       clientManager.executeTool = mockExecuteTool;
 
