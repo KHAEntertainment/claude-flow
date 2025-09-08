@@ -26,7 +26,7 @@ Update your `package.json` to include the new proxy-core dependencies:
 ```json
 {
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
     "claude-flow-proxy": "^1.0.0",
     "claude-flow-backend": "^1.0.0"
   },
