@@ -32,8 +32,9 @@ async function main() {
     backendServers: [
       {
         name: 'claude-flow-backend',
-        command: 'node',
-        args: ['src/mcp/backend/claude-flow-backend.js'],
+        // Run TS directly via tsx (or update to built dist path if you prefer Node)
+        command: 'tsx',
+        args: ['src/mcp/backend/claude-flow-backend.ts'],
         env: {
           NODE_ENV: 'production',
         },
