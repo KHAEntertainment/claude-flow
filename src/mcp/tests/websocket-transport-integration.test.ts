@@ -137,9 +137,9 @@ describe('WebSocket Transport Integration Tests', () => {
       // Start transport
       await transport.start();
       
-      // Setup handlers
-      transport.onRequest(mockRequestHandler);
-      transport.onNotification(mockNotificationHandler);
+      // Setup handlers (server-side)
+      transport.onRequest(mockMcpServer.handleRequest);
+      transport.onNotification(mockMcpServer.handleNotification);
       
       // Simulate MCP server starting
       await mockMcpServer.start();
