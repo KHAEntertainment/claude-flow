@@ -21,10 +21,11 @@ async function startClaudeFlowBackend() {
     tool.handler = async (input: unknown, context?: ClaudeFlowToolContext) => {
       // For the backend server, we don't have orchestrator, so use a basic context
       const backendContext: ClaudeFlowToolContext = {
-        ...context,
+        ...(context ?? {}),
         // Add any backend-specific context if needed
       } as ClaudeFlowToolContext;
       return await originalHandler(input, backendContext);
+    };
     };
     server.registerTool(tool);
   }
