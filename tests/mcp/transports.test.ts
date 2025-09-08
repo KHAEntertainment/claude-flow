@@ -516,6 +516,7 @@ describe('MCP Transports', () => {
   describe('WebSocketTransport', () => {
     let transport: WebSocketTransport;
     let wsServer: WebSocketServer;
+    let httpServer: ReturnType<typeof createServer>;
     let serverPort: number;
     let wsClient: any;
     let requestHandler: any;
@@ -523,7 +524,7 @@ describe('MCP Transports', () => {
 
     beforeEach(async () => {
       // Create a mock WebSocket server for testing
-      const httpServer = createServer();
+      httpServer = createServer();
       wsServer = new WebSocketServer({ server: httpServer });
       
       wsServer.on('connection', ws => {
@@ -596,6 +597,9 @@ describe('MCP Transports', () => {
       await transport.stop();
       wsServer.close();
       await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise<void>(resolve => {
+        httpServer.close(() => resolve());
+      });
     });
 
     it('should start and stop correctly', async () => {
