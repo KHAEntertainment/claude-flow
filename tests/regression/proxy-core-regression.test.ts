@@ -38,18 +38,22 @@ describe('Proxy-Core Architecture Regression Tests', () => {
     });
   });
 
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+
   beforeEach(async () => {
     proxyServer = new ProxyServer(testConfig, eventBus, logger);
     await proxyServer.start();
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     if (proxyServer) {
       await proxyServer.stop();
     }
-    await logger.close();
   });
 
+  afterAll(async () => {
+    await logger.close();
+  });
   describe('Tool Discovery Regression Tests', () => {
     it('should discover tools with semantic search correctly', async () => {
       const discoveryService = proxyServer.getMcpServer()['discoveryService'];
