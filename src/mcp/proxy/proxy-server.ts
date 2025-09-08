@@ -126,8 +126,12 @@ export class ProxyServer {
         // List tools from the backend server
         const toolsResult = await this.clientManager.listTools(backendName);
         
-        if (toolsResult && Array.isArray(toolsResult)) {
+        if (Array.isArray(toolsResult)) {
           for (const tool of toolsResult) {
+            if (!tool || typeof tool.name !== 'string' || !tool.inputSchema) {
+              this.logger.warn(`Skipping invalid tool from ${backendName}`, { tool });
+              continue;
+            }
             // Add backend information to the tool metadata
             const toolWithBackend = {
               ...tool,
