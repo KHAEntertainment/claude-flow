@@ -65,7 +65,7 @@ describe('GatingService', () => {
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBeGreaterThan(0);
-      
+
       // Calculate total tokens
       const totalTokens = result.reduce((sum, tool) => sum + (tool.tokenCount || 0), 0);
       expect(totalTokens).toBeLessThanOrEqual(500);
@@ -97,7 +97,7 @@ describe('GatingService', () => {
       });
 
       expect(result.length).toBeGreaterThan(0);
-      
+
       // File-related tools should be prioritized
       const fileTools = result.filter(tool => tool.name.includes('file'));
       expect(fileTools.length).toBeGreaterThan(0);
@@ -229,13 +229,13 @@ describe('GatingService', () => {
       });
 
       const result = await gatingService.provisionTools({
-        query: 'operations',
+       .query: 'operations',
         maxTokens: 700, // Should fit tool-a + tool-b but not tool-c
       });
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBeGreaterThan(0);
-      
+
       const totalTokens = result.reduce((sum, tool) => sum + (tool.tokenCount || 0), 0);
       expect(totalTokens).toBeLessThanOrEqual(700);
     });
@@ -274,12 +274,12 @@ describe('GatingService', () => {
       });
 
       expect(result.length).toBeGreaterThan(0);
-      
+
       // File-related tools should come before system-info
       const fileReadIndex = result.findIndex(tool => tool.name === 'file-read');
       const fileWriteIndex = result.findIndex(tool => tool.name === 'file-write');
       const systemInfoIndex = result.findIndex(tool => tool.name === 'system-info');
-      
+
       if (fileReadIndex !== -1 && systemInfoIndex !== -1) {
         expect(fileReadIndex).toBeLessThan(systemInfoIndex);
       }
@@ -342,9 +342,117 @@ describe('GatingService', () => {
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBeGreaterThan(0);
-      
+
       const totalTokens = result.reduce((sum, tool) => sum + (tool.tokenCount || 0), 0);
       expect(totalTokens).toBeLessThanOrEqual(200);
     });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Additional comprehensive scenarios for GatingService
+// Framework note: Tests written using Jest/Vitest global API (describe/it/expect).
+// No explicit imports of the test framework are required, matching existing tests.
+// -----------------------------------------------------------------------------
+
+describe('GatingService – comprehensive behaviors', () => {
+  it('defaults to allowing tools when both allowList and denyList are empty or omitted', () => {
+    const svcA = new GatingService({ allowList: [], denyList: [] });
+    const svcB = new GatingService({} as any);
+    expect(svcA.isToolAllowed('anyTool')).toBe(true);
+    expect(svcB.isToolAllowed('anyTool')).toBe(true);
+  });
+
+  it('handles duplicate entries in allowList and denyList deterministically', () => {
+    const svc = new GatingService({
+      allowList: ['alpha', 'alpha', 'beta'],
+      denyList: ['gamma', 'gamma']
+    });
+    expect(svc.isToolAllowed('alpha')).toBe(true);
+    expect(svc.isToolAllowed('beta')).toBe(true);
+    expect(svc.isToolAllowed('gamma')).toBe(false);
+  });
+
+  it('treats unknown tools as denied when allowList is non-empty (whitelist mode)', () => {
+    const svc = new GatingService({ allowList: ['known'], denyList: [] });
+    expect(svc.isToolAllowed('unknown')).toBe(false);
+  });
+
+  it('ensures denyList precedence even with multiple overlaps', () => {
+    const svc = new GatingService({
+      allowList: ['a', 'b', 'c'],
+      denyList: ['x', 'b', 'y']
+    });
+    expect(svc.isToolAllowed('b')).toBe(false);
+    expect(svc.isToolAllowed('a')).toBe(true);
+    expect(svc.isToolAllowed('x')).toBe(false);
+  });
+
+  it('returns false for non-string tool names, including objects, arrays, and booleans', () => {
+    const svc = new GatingService({ allowList: ['valid'], denyList: [] });
+    expect(svc.isToolAllowed({} as any)).toBe(false);
+    expect(svc.isToolAllowed([] as any)).toBe(false);
+    expect(svc.isToolAllowed(true as any)).toBe(false);
+    expect(svc.isToolAllowed(false as any)).toBe(false);
+  });
+
+  it('rejects whitespace-only strings as invalid tool names', () => {
+    const svc = new GatingService({ allowList: ['valid'], denyList: [] });
+    expect(svc.isToolAllowed('   ' as any)).toBe(false);
+    expect(svc.isToolAllowed('\n\t' as any)).toBe(false);
+  });
+
+  it('does not mutate input arrays passed into constructor', () => {
+    const allow = ['keep'];
+    const deny = ['ban'];
+    const svc = new GatingService({ allowList: allow, denyList: deny });
+
+    // Interact with service
+    expect(svc.isToolAllowed('keep')).toBe(true);
+    expect(svc.isToolAllowed('ban')).toBe(false);
+
+    // Mutate original arrays after construction
+    allow.push('newAllowed');
+    deny.push('newDenied');
+
+    // Service behavior should reflect internal snapshot at construction time,
+    // not be affected by subsequent external mutations.
+    expect(svc.isToolAllowed('newAllowed')).toBe(false);
+    expect(svc.isToolAllowed('newDenied')).toBe(true);
+  });
+
+  it('handles very long tool names safely', () => {
+    const longName = 't'.repeat(10_000);
+    const svc = new GatingService({ allowList: [longName], denyList: [] });
+    expect(svc.isToolAllowed(longName)).toBe(true);
+    expect(svc.isToolAllowed(longName + 'x')).toBe(false);
+  });
+
+  it('is resilient to allowList/denyList containing non-string values', () => {
+    // @ts-expect-error intentionally passing invalid list content to test robustness
+    const svc = new GatingService({ allowList: ['ok', 42 as any], denyList: [null as any, 'blocked'] });
+    expect(svc.isToolAllowed('ok')).toBe(true);
+    expect(svc.isToolAllowed('blocked')).toBe(false);
+    expect(svc.isToolAllowed('42')).toBe(false);
+  });
+
+  it('treats case as exact-match by default (no implicit case folding)', () => {
+    const svc = new GatingService({ allowList: ['CaseSensitive'], denyList: [] });
+    expect(svc.isToolAllowed('CaseSensitive')).toBe(true);
+    expect(svc.isToolAllowed('casesensitive')).toBe(false);
+    expect(svc.isToolAllowed('CASESENSITIVE')).toBe(false);
+  });
+
+  it('considers empty string entries within lists as inert and still denies empty tool names', () => {
+    const svc = new GatingService({ allowList: [''], denyList: [''] });
+    expect(svc.isToolAllowed('')).toBe(false);
+    expect(svc.isToolAllowed('realTool')).toBe(true);
+  });
+
+  it('does not throw when options are partially provided', () => {
+    const svc1 = new GatingService({ allowList: ['x'] } as any);
+    const svc2 = new GatingService({ denyList: ['y'] } as any);
+    expect(() => svc1.isToolAllowed('x')).not.toThrow();
+    expect(() => svc2.isToolAllowed('y')).not.toThrow();
   });
 });
