@@ -10,5 +10,7 @@
   "security": {
     "enabled": false,
     "blocked": []
-  }
+  },
+  "autoDisableTtlMs": 300000,
+  "maxActiveToolsets": 0
 }
