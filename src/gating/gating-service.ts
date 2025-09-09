@@ -7,7 +7,25 @@ interface ProvisionOptions {
 }
 
 export class GatingService {
+  private gateController?: any;
+  
   constructor(private discoveryService: DiscoveryService) {}
+  
+  /**
+   * Set the gate controller for TTL/LRU management
+   */
+  setGateController(controller: any): void {
+    this.gateController = controller;
+  }
+  
+  /**
+   * Mark a tool as used for TTL tracking
+   */
+  markToolUsed(toolName: string): void {
+    if (this.gateController?.markUsed) {
+      this.gateController.markUsed(toolName);
+    }
+  }
 
   async provisionTools(options: ProvisionOptions): Promise<MCPTool[]> {
     const { query, maxTokens } = options;

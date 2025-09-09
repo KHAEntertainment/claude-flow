@@ -18,6 +18,7 @@ export class RequestRouter {
   constructor(
     private toolRegistry: ToolRegistry,
     private logger: ILogger,
+    private gatingService?: any,
   ) {}
 
   /**
@@ -38,6 +39,11 @@ export class RequestRouter {
       // Handle tool invocations
       if (method.startsWith('tools.')) {
         return await this.handleToolMethod(method, params);
+      }
+      
+      // Handle tools/call specifically (MCP standard)
+      if (method === 'tools/call') {
+        return await this.handleToolsCall(params);
       }
 
       // Try to execute as a tool directly
@@ -213,6 +219,12 @@ export class RequestRouter {
     }
 
     const { tool, input } = params as { tool: string; input?: unknown };
+    
+    // Mark tool as used for TTL tracking (if gating service is available)
+    if ((this as any).gatingService?.markToolUsed) {
+      (this as any).gatingService.markToolUsed(tool);
+    }
+    
     return await this.toolRegistry.executeTool(tool, input || {});
   }
 
@@ -236,5 +248,23 @@ export class RequestRouter {
       description: tool.description,
       inputSchema: tool.inputSchema,
     };
+  }
+  
+  /**
+   * Handles MCP standard tools/call method
+   */
+  private async handleToolsCall(params: unknown): Promise<unknown> {
+    if (!params || typeof params !== 'object' || !('name' in params)) {
+      throw new Error('Invalid params: name required');
+    }
+
+    const { name, arguments: args } = params as { name: string; arguments?: unknown };
+    
+    // Mark tool as used for TTL tracking
+    if (this.gatingService?.markToolUsed) {
+      this.gatingService.markToolUsed(name);
+    }
+    
+    return await this.toolRegistry.executeTool(name, args || {});
   }
 }
