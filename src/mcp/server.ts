@@ -14,7 +14,6 @@ import {
   MCPMetrics,
   MCPProtocolVersion,
   MCPCapabilities,
-  MCPContext,
 } from '../utils/types.js';
 import type { IEventBus } from '../core/event-bus.js';
 import type { ILogger } from '../core/logger.js';
@@ -27,13 +26,11 @@ import { RequestRouter } from './router.js';
 import { SessionManager, ISessionManager } from './session-manager.js';
 import { AuthManager, IAuthManager } from './auth.js';
 import { LoadBalancer, ILoadBalancer, RequestQueue } from './load-balancer.js';
-import { createClaudeFlowTools, ClaudeFlowToolContext } from './claude-flow-tools.js';
 import { platform, arch } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import * as fs from 'node:fs';
-import ToolGateController from '../gating/toolset-registry.js';
-import filterConfigDefault from '../gating/filter-config.json' with { type: 'json' };
-import { optimizeTool } from '../gating/schema-optimizer.js';
+import { DiscoveryService } from '../gating/discovery-service.js';
+import { GatingService } from '../gating/gating-service.js';
+import { InMemoryToolRepository } from './proxy/tool-repository.js';
 export interface IMCPServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -62,8 +59,9 @@ export class MCPServer implements IMCPServer {
   private requestQueue?: RequestQueue;
   private running = false;
   private currentSession?: MCPSession | undefined;
-  private gateController: ToolGateController;
-  private gateTools = new Set<string>();
+  private toolRepository: InMemoryToolRepository;
+  private discoveryService: DiscoveryService;
+  private gatingService: GatingService;
 
   private readonly serverInfo = {
     name: 'Claude-Flow MCP Server',
@@ -109,33 +107,6 @@ export class MCPServer implements IMCPServer {
     // Initialize tool registry
     this.toolRegistry = new ToolRegistry(logger);
 
-    // Initialize gate controller with runtime filter config
-    const filterConfig = this.loadFilterConfig();
-    this.gateController = new ToolGateController(
-      {
-        claude: async () => {
-          const tools = await createClaudeFlowTools(this.logger);
-          for (const tool of tools) {
-            const originalHandler = tool.handler;
-            tool.handler = async (input: unknown, context?: MCPContext) => {
-              const claudeContext: ClaudeFlowToolContext = {
-                ...context,
-                orchestrator: this.orchestrator,
-              } as ClaudeFlowToolContext;
-              return await originalHandler(input, claudeContext);
-            };
-          }
-          return Object.fromEntries(tools.map((t) => [t.name, t]));
-        },
-      },
-      filterConfig
-    );
-
-    // Register discovery tools
-    for (const tool of this.getDiscoveryTools()) {
-      this.registerTool(tool);
-    }
-
     // Initialize session manager
     this.sessionManager = new SessionManager(config, logger);
 
@@ -150,6 +121,11 @@ export class MCPServer implements IMCPServer {
 
     // Initialize request router
     this.router = new RequestRouter(this.toolRegistry, logger);
+
+    // Initialize tool repository and services
+    this.toolRepository = new InMemoryToolRepository();
+    this.discoveryService = new DiscoveryService(this.toolRepository);
+    this.gatingService = new GatingService(this.discoveryService);
   }
 
   async start(): Promise<void> {
@@ -459,170 +435,7 @@ export class MCPServer implements IMCPServer {
     }
   }
 
-  private async registerBuiltInTools(): Promise<void> {
-    // System information tool
-    this.registerTool({
-      name: 'system/info',
-      description: 'Get system information',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-      },
-      handler: async () => {
-        return {
-          version: '1.0.0',
-          platform: platform(),
-          arch: arch(),
-          runtime: 'Node.js',
-          uptime: performance.now(),
-        };
-      },
-    });
-
-    // Health check tool
-    this.registerTool({
-      name: 'system/health',
-      description: 'Get system health status',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-      },
-      handler: async () => {
-        return await this.getHealthStatus();
-      },
-    });
-
-    // List tools
-    this.registerTool({
-      name: 'tools/list',
-      description: 'List all available tools',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-      },
-      handler: async () => {
-        const discovery = this.toolRegistry
-          .listTools()
-          .filter((t) => !this.gateTools.has(t.name))
-          .map((t) => ({ name: t.name, description: t.description }));
-        const context = this.currentSession ? { sessionId: this.currentSession.id } : {};
-        const gated = Object.values(this.gateController.getAvailableTools(context)).map(t => ({
-          name: t.name,
-          description: t.description,
-        }));
-        return [...discovery, ...gated];
-      },
-    });
-
-    // Tool schema
-    this.registerTool({
-      name: 'tools/schema',
-      description: 'Get schema for a specific tool',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-        },
-        required: ['name'],
-      },
-      handler: async (input: any) => {
-        const tool = this.toolRegistry.getTool(input.name);
-        if (!tool) {
-          throw new Error(`Tool not found: ${input.name}`);
-        }
-        return {
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        };
-      },
-    });
-  }
-
-  private loadFilterConfig(): typeof filterConfigDefault {
-    const configPath = process.env.TOOL_FILTER_CONFIG;
-    if (configPath) {
-      try {
-        const raw = fs.readFileSync(configPath, 'utf8');
-        return JSON.parse(raw);
-      } catch (err) {
-        this.logger.warn('Failed to load filter config', { error: err });
-      }
-    }
-    return filterConfigDefault;
-  }
-
-  private getDiscoveryTools(): MCPTool[] {
-    const tools: MCPTool[] = [
-      {
-        name: 'gate/discover_toolsets',
-        description: 'List available toolsets',
-        inputSchema: { type: 'object', properties: {} },
-        handler: async () => ({
-          toolsets: this.gateController.discoverToolsets(),
-        }),
-      },
-      {
-        name: 'gate/enable_toolset',
-        description: 'Enable a toolset by name',
-        inputSchema: {
-          type: 'object',
-          properties: { name: { type: 'string' } },
-          required: ['name'],
-        },
-        handler: async ({ name }) => {
-          await this.gateController.enableToolset(name);
-          this.syncGateTools();
-          return { tools: this.gateController.listActiveTools() };
-        },
-      },
-      {
-        name: 'gate/disable_toolset',
-        description: 'Disable a toolset by name',
-        inputSchema: {
-          type: 'object',
-          properties: { name: { type: 'string' } },
-          required: ['name'],
-        },
-        handler: async ({ name }) => {
-          this.gateController.disableToolset(name);
-          this.syncGateTools();
-          return { tools: this.gateController.listActiveTools() };
-        },
-      },
-      {
-        name: 'gate/list_active_tools',
-        description: 'List currently active tools',
-        inputSchema: { type: 'object', properties: {} },
-        handler: async () => ({ tools: this.gateController.listActiveTools() }),
-      },
-    ];
-    return tools.map(optimizeTool);
-  }
-
-  private syncGateTools(): void {
-    const available = this.gateController.getAvailableTools();
-    const names = new Set(Object.keys(available));
-
-    for (const name of Array.from(this.gateTools)) {
-      if (!names.has(name)) {
-        this.toolRegistry.unregister(name);
-        this.gateTools.delete(name);
-      }
-    }
-
-    for (const [name, tool] of Object.entries(available)) {
-      if (!name.includes('/')) {
-        continue;
-      }
-      if (!this.gateTools.has(name)) {
-        this.toolRegistry.register(tool);
-        this.gateTools.add(name);
-      }
-    }
-  }
-
-  private errorToMCPError(error): MCPError {
+  private errorToMCPError(error: unknown): MCPError {
     if (error instanceof MCPMethodNotFoundError) {
       return {
         code: -32601,
@@ -651,5 +464,134 @@ export class MCPServer implements IMCPServer {
       message: 'Internal error',
       data: error,
     };
+  }
+  private async registerBuiltInTools(): Promise<void> {
+    // Discovery tool - finds relevant tools based on semantic search
+    this.registerTool({
+      name: 'discover_tools',
+      description: 'Discover available tools based on a semantic query',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { 
+            type: 'string',
+            description: 'Semantic query to search for relevant tools'
+          },
+          limit: { 
+            type: 'number', 
+            description: 'Maximum number of tools to return (default: 10)',
+            minimum: 1,
+            maximum: 100
+          }
+        },
+        required: ['query']
+      },
+      handler: async (input: unknown) => {
+        const params = input as { query: string; limit?: number };
+        const tools = await this.discoveryService.discoverTools({
+          query: params.query,
+          limit: params.limit
+        });
+        return tools;
+      }
+    });
+    
+    // Provisioning tool - selects tools based on token limits
+    this.registerTool({
+      name: 'provision_tools',
+      description: 'Provision tools based on a query and token limit',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { 
+            type: 'string',
+            description: 'Query to discover tools for provisioning'
+          },
+          maxTokens: { 
+            type: 'integer',
+            description: 'Maximum token budget for provisioned tools',
+            minimum: 0,
+            maximum: 100000
+          }
+        },
+        required: ['query', 'maxTokens']
+      },
+      handler: async (input: unknown) => {
+        const params = input as { query: string; maxTokens: number };
+        const tools = await this.gatingService.provisionTools({
+          query: params.query,
+          maxTokens: params.maxTokens
+        });
+        return tools;
+      }
+    });
+    
+    // System information tool
+    this.registerTool({
+      name: 'system/info',
+      description: 'Get system information',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+      handler: async () => {
+        return {
+          version: '1.0.0',
+          runtime: 'Node.js',
+        };
+      },
+    });
+    
+    // Health check tool
+    this.registerTool({
+      name: 'system/health',
+      description: 'Get system health status',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+      handler: async () => {
+        return await this.getHealthStatus();
+      },
+    });
+    
+    // List tools
+    this.registerTool({
+      name: 'tools/list',
+      description: 'List all available tools',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+      handler: async () => {
+        return this.toolRegistry.listTools().map((t) => ({ name: t.name, description: t.description }));
+      },
+    });
+    
+    // Tool schema
+    this.registerTool({
+      name: 'tools/schema',
+      description: 'Get schema for a specific tool',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+        },
+        required: ['name'],
+      },
+      handler: async (input: unknown) => {
+        const params = input as { name: string };
+        const { name } = params;
+        const tool = this.toolRegistry.getTool(name);
+        if (!tool) {
+          throw new Error(`Tool not found: ${name}`);
+        }
+        return {
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        };
+      },
+    });
   }
 }

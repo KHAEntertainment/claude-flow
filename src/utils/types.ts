@@ -338,6 +338,9 @@ export interface MCPTool {
   description: string;
   inputSchema: Record<string, unknown>;
   handler: (input: unknown, context?: MCPContext) => Promise<unknown>;
+  categories?: string[];
+  capabilities?: string[];
+  deprecated?: boolean;
 }
 
 export interface MCPPrompt {
