@@ -1,4 +1,4 @@
-import { InMemoryToolRepository } from '../mcp/proxy/tool-repository.js';
+import { InMemoryToolRepository } from '../repository/tool-repository.js';
 import { MCPTool } from '../utils/types.js';
 
 interface DiscoveryOptions {
@@ -18,47 +18,52 @@ export class DiscoveryService {
     const { query, limit = 10 } = options;
 
     // In a real implementation, this would use a semantic search engine
-    // For now, we'll use a simple keyword search
+    // For now, we'll use a simple keyword search with null-safety
     const allTools = this.toolRepository.getAllTools();
-    const q = (query ?? '').trim().toLowerCase();
-    // Prefer indexed search; default to excluding deprecated tools
-    let results = this.toolRepository.searchTools({ includeDeprecated: false });
-
-    if (q) {
-      results = results.filter(tool => {
-        const haystacks = [
-          tool.name,
-          tool.description,
-          ...(tool.categories ?? []),
-          ...(tool.capabilities ?? []),
-        ]
-          .filter(Boolean)
-          .map(s => s.toLowerCase());
-        return haystacks.some(h => h.includes(q));
-      });
-    }
+    const queryLower = (query ?? '').trim().toLowerCase();
+    
+    const filteredTools = allTools.filter(tool => {
+      // Check multiple fields for the query, with null-safety
+      const searchFields = [
+        tool.name,
+        tool.description,
+        ...(tool.categories || []),
+        ...(tool.capabilities || [])
+      ].filter(Boolean).map(s => s.toLowerCase());
+      
+      return searchFields.some(field => field.includes(queryLower));
+    });
 
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
-    return results.slice(0, safeLimit);
-
-    return filteredTools.slice(0, limit);
+    return filteredTools.slice(0, safeLimit);
   }
 
   async provisionTools(options: ProvisionOptions): Promise<MCPTool[]> {
     const { tools, maxTokens } = options;
-    if (!Number.isFinite(maxTokens) || maxTokens <= 0) return [];
+    
+    // Validate input
+    if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
+      return [];
+    }
+    
     let currentTokens = 0;
     const provisionedTools: MCPTool[] = [];
 
     for (const tool of tools) {
+      // Use integer token counts with minimum of 1
       const toolTokens = Math.max(1, Math.ceil(this.calculateTokenSize(tool)));
+      
+      // Skip tools that can never fit
       if (toolTokens > maxTokens) {
-        // Skip tools that can never fit
         continue;
       }
+      
       if (currentTokens + toolTokens <= maxTokens) {
         provisionedTools.push(tool);
         currentTokens += toolTokens;
+      } else {
+        // No more tools can fit, stop early
+        break;
       }
     }
 

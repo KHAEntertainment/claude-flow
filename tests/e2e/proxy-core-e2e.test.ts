@@ -60,7 +60,7 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
   describe('Complete User Workflow', () => {
     it('should handle complete workflow: discover -> provision -> execute', async () => {
       // Step 1: Discover tools
-      const discoveryService = proxyServer.getMcpServer()['discoveryService'];
+      const discoveryService = proxyServer.getDiscoveryService();
       const discoveredTools = await discoveryService.discoverTools({
         query: 'file system operations',
         limit: 5,
@@ -70,7 +70,7 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
       expect(discoveredTools.length).toBeGreaterThan(0);
 
       // Step 2: Provision tools within token limit
-      const gatingService = proxyServer.getMcpServer()['gatingService'];
+      const gatingService = proxyServer.getGatingService();
       const provisionedTools = await gatingService.provisionTools({
         query: 'file system operations',
         maxTokens: 5000,
@@ -105,8 +105,8 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
 
     it('should handle workflow with multiple tool executions', async () => {
       const proxyService = proxyServer.getProxyService();
-      const discoveryService = proxyServer.getMcpServer()['discoveryService'];
-      const gatingService = proxyServer.getMcpServer()['gatingService'];
+      const discoveryService = proxyServer.getDiscoveryService();
+      const gatingService = proxyServer.getGatingService();
 
       // Discover and provision tools
       const tools = await gatingService.provisionTools({
@@ -144,28 +144,32 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
     });
 
     it('should handle workflow with invalid parameters gracefully', async () => {
-      const discoveryService = proxyServer.getMcpServer()['discoveryService'];
+      const discoveryService = proxyServer.getDiscoveryService();
       const tools = await discoveryService.discoverTools({
         query: 'system information',
         limit: 1,
       });
 
-      if (tools.length > 0) {
-        const proxyService = proxyServer.getProxyService();
-        const toolName = tools[0].name;
-        
-        // Execute with invalid parameters
-        await expect(
-          proxyService.executeTool(toolName, { invalid: 'parameter' })
-        ).rejects.toThrow();
+      // Fail-fast assertion: Test should fail if no tools are discovered
+      expect(tools.length).toBeGreaterThan(0);
+      if (tools.length === 0) {
+        throw new Error('Test requires at least one tool to be discovered, but none were found');
       }
+
+      const proxyService = proxyServer.getProxyService();
+      const toolName = tools[0].name;
+      
+      // Execute with invalid parameters
+      await expect(
+        proxyService.executeTool(toolName, { invalid: 'parameter' })
+      ).rejects.toThrow();
     });
   });
 
   describe('Performance Workflow', () => {
     it('should handle concurrent workflows efficiently', async () => {
       const proxyService = proxyServer.getProxyService();
-      const gatingService = proxyServer.getMcpServer()['gatingService'];
+      const gatingService = proxyServer.getGatingService();
 
       // Provision tools
       const tools = await gatingService.provisionTools({
@@ -173,26 +177,30 @@ describe('Proxy-Core Architecture End-to-End Tests', () => {
         maxTokens: 5000,
       });
 
-      if (tools.length > 0) {
-        const toolName = tools[0].name;
-        
-        // Execute multiple concurrent workflows
-        const concurrentWorkflows = Array.from({ length: 10 }, () =>
-          proxyService.executeTool(toolName, {})
-        );
-
-        const startTime = Date.now();
-        const results = await Promise.all(concurrentWorkflows);
-        const endTime = Date.now();
-
-        expect(results.length).toBe(10);
-        results.forEach(result => {
-          expect(result).toBeDefined();
-        });
-
-        // Should complete within reasonable time
-        expect(endTime - startTime).toBeLessThan(5000); // 5 seconds
+      // Fail-fast assertion: Test should fail if no tools are provisioned
+      expect(tools.length).toBeGreaterThan(0);
+      if (tools.length === 0) {
+        throw new Error('Test requires at least one tool to be provisioned, but none were found');
       }
+
+      const toolName = tools[0].name;
+      
+      // Execute multiple concurrent workflows
+      const concurrentWorkflows = Array.from({ length: 10 }, () =>
+        proxyService.executeTool(toolName, {})
+      );
+
+      const startTime = Date.now();
+      const results = await Promise.all(concurrentWorkflows);
+      const endTime = Date.now();
+
+      expect(results.length).toBe(10);
+      results.forEach(result => {
+        expect(result).toBeDefined();
+      });
+
+      // Should complete within reasonable time
+      expect(endTime - startTime).toBeLessThan(5000); // 5 seconds
     });
   });
 });

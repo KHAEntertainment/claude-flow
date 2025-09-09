@@ -240,6 +240,19 @@ export class ToolRegistry extends EventEmitter {
 
       const inputObj = input as Record<string, unknown>;
 
+      // Check for unknown properties (strict validation)
+      // Unless explicitly allowed via additionalProperties: true
+      if (schema.additionalProperties !== true) {
+        const allowedProperties = Object.keys(schema.properties || {});
+        const inputProperties = Object.keys(inputObj);
+        
+        for (const prop of inputProperties) {
+          if (!allowedProperties.includes(prop)) {
+            throw new MCPError(`Unknown property: ${prop}. Allowed properties are: ${allowedProperties.join(', ')}`);
+          }
+        }
+      }
+
       // Check required properties
       if (schema.required && Array.isArray(schema.required)) {
         for (const prop of schema.required) {

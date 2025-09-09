@@ -519,14 +519,7 @@ export class ProductionDeploymentExample {
   }
 }
 
-// Export all examples
-export {
-  BasicSecurityIntegration,
-  AdvancedSecurityIntegration,
-  ClaudeFlowAgentSecurityWrapper,
-  SecurityTestingExample,
-  ProductionDeploymentExample
-};
+// All classes are already exported inline above
 
 // Usage examples as comments:
 /*

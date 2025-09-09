@@ -688,11 +688,3 @@ export class ComplianceMonitoringMiddleware implements SecurityMiddleware {
 }
 
 // Export all middleware classes
-export {
-  SecurityMiddlewareManager,
-  ThreatIntelligenceMiddleware,
-  IPFilterMiddleware,
-  SecurityLoggingMiddleware,
-  PerformanceMonitoringMiddleware,
-  ComplianceMonitoringMiddleware
-};

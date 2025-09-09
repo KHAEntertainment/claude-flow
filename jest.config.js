@@ -20,14 +20,16 @@ export default {
     '<rootDir>/tests/.*\\.broken$'
   ],
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
+    '^.+\.ts$': ['ts-jest', {
       useESM: true,
       tsconfig: {
         module: 'es2022',
         moduleResolution: 'node',
         allowSyntheticDefaultImports: true,
         esModuleInterop: true,
-        target: 'es2022'
+        target: 'es2022',
+        allowImportingTsExtensions: true,
+        noEmit: true
       }
     }],
     '^.+\\.js$': ['babel-jest', {

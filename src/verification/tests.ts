@@ -739,9 +739,3 @@ export class SecurityValidationSuite {
 }
 
 // Export all testing components
-export {
-  SecurityTestUtils,
-  PenetrationTestingSuite,
-  LoadTestingSuite,
-  SecurityValidationSuite
-};
