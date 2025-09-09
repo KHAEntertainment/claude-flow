@@ -66,7 +66,10 @@ async function showMcpStatus(subArgs, flags) {
 async function startMcpServer(subArgs, flags) {
   const autoOrchestrator = subArgs.includes('--auto-orchestrator') || flags.autoOrchestrator;
   const daemon = subArgs.includes('--daemon') || flags.daemon;
-  const stdio = subArgs.includes('--stdio') || flags.stdio || true; // Default to stdio mode
+  // Default to stdio unless --http is explicitly requested
+  const explicitlyStdio = subArgs.includes('--stdio') || flags.stdio === true;
+  const explicitlyHttp = subArgs.includes('--http') || flags.http === true;
+  const stdio = explicitlyStdio || (!explicitlyHttp);
 
   if (stdio) {
     // Start MCP server in stdio mode (like ruv-swarm)
@@ -99,15 +102,23 @@ async function startMcpServer(subArgs, flags) {
         throw new Error(`MCP server file not found: ${mcpServerPath}`);
       }
 
-      // Start the MCP server process
+      // Start the MCP server process with environment configuration
+      const serverEnv = {
+        ...process.env,
+        CLAUDE_FLOW_AUTO_ORCHESTRATOR: autoOrchestrator ? 'true' : 'false',
+        CLAUDE_FLOW_NEURAL_ENABLED: 'true',
+        CLAUDE_FLOW_WASM_ENABLED: 'true',
+      };
+      
+      // Pass through TOOL_FILTER_CONFIG if provided
+      const cliFilterCfg = getFlag(subArgs, '--tool-filter-config') || flags.toolFilterConfig;
+      if (cliFilterCfg) {
+        serverEnv.TOOL_FILTER_CONFIG = cliFilterCfg;
+      }
+      
       const serverProcess = spawn('node', [mcpServerPath], {
         stdio: 'inherit',
-        env: {
-          ...process.env,
-          CLAUDE_FLOW_AUTO_ORCHESTRATOR: autoOrchestrator ? 'true' : 'false',
-          CLAUDE_FLOW_NEURAL_ENABLED: 'true',
-          CLAUDE_FLOW_WASM_ENABLED: 'true',
-        },
+        env: serverEnv,
       });
 
       serverProcess.on('exit', (code) => {
@@ -116,8 +127,20 @@ async function startMcpServer(subArgs, flags) {
         }
       });
 
-      // Keep the process alive
-      await new Promise(() => {}); // Never resolves, keeps server running
+      // Handle daemon vs interactive mode
+      if (daemon) {
+        // Detach in daemon mode
+        serverProcess.unref();
+        printSuccess('MCP server started in daemon mode');
+        console.log('Process ID:', serverProcess.pid);
+        return; // Return control to the shell
+      } else {
+        // Wait for child to exit in interactive mode
+        await new Promise((resolve, reject) => {
+          serverProcess.once('exit', resolve);
+          serverProcess.once('error', reject);
+        });
+      }
     } catch (error) {
       console.error('Failed to start MCP server:', error.message);
 
