@@ -16,5 +16,7 @@
   "autoEnableBlocklist": [],
   "autoEnableRespectFilters": true,
   "autoEnableCaseInsensitive": true,
-  "autoEnableConflictResolution": "prefer-enabled"
+  "autoEnableConflictResolution": "prefer-enabled",
+  "autoDisableTtlMs": 300000,
+  "maxActiveToolsets": 0
 }
