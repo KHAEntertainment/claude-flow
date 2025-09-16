@@ -63,20 +63,35 @@ export class ToolGateController {
     );
     this.toolsetTools[name] = Object.keys(optimized);
     
-    // Track tool-to-toolset mapping for usage tracking
-    for (const toolName of Object.keys(optimized)) {
-      this.toolNameToToolset.set(toolName, name);
+  const optimized = Object.fromEntries(
+    Object.entries(tools).map(([n, t]) => [n, optimizeTool(t)])
+  );
+  this.toolsetTools[name] = Object.keys(optimized);
+
+  // Guard against name collisions across toolsets
+  for (const toolName of Object.keys(optimized)) {
+    const existingOwner = this.toolNameToToolset.get(toolName);
+    if (existingOwner && existingOwner !== name) {
+      throw new Error(
+        `Tool name collision: "${toolName}" already provided by toolset "${existingOwner}"`
+      );
     }
-    
-    Object.assign(this.loadedTools, optimized);
-    this.activeToolsets.add(name);
-    
-    // Mark as recently used
-    this.toolsetLastUsed.set(name, Date.now());
-    
-    // Enforce LRU cap after enabling
-    this.enforceLRUCap();
   }
+
+  // Track tool-to-toolset mapping for usage tracking
+  for (const toolName of Object.keys(optimized)) {
+    this.toolNameToToolset.set(toolName, name);
+  }
+
+  Object.assign(this.loadedTools, optimized);
+  this.activeToolsets.add(name);
+
+  // Mark as recently used
+  this.toolsetLastUsed.set(name, Date.now());
+
+  // Enforce LRU cap after enabling
+  this.enforceLRUCap();
+}
 
   disableToolset(name: string): void {
     if (!this.activeToolsets.has(name)) {
