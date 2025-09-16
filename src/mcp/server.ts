@@ -606,7 +606,10 @@ export class MCPServer implements IMCPServer {
         if (!input || typeof input !== 'object' || !('name' in (input as any))) {
           throw new Error('Invalid params: { name: string } is required');
         }
-        const { name } = input as { name: string };
+        const { name } = input as { name: unknown };
+        if (typeof name !== 'string') {
+          throw new Error('Invalid params: name must be a string');
+        }
         const tool = this.toolRegistry.getTool(name);
         if (!tool) {
           throw new Error(`Tool not found: ${name}`);
