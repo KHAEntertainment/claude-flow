@@ -21,7 +21,11 @@ export class DiscoveryService {
     // For now, we'll use a simple keyword search with null-safety
     const allTools = this.toolRepository.getAllTools();
     const queryLower = (query ?? '').trim().toLowerCase();
-    
+
+    if (!queryLower) {
+      return [];
+    }
+
     const filteredTools = allTools.filter(tool => {
       // Check multiple fields for the query, with null-safety
       const searchFields = [
