@@ -59,10 +59,8 @@ export class WebSocketTransport implements ITransport {
 
     try {
       // Dynamic import of ws module
-      const { WebSocket } = await import('ws');
-      
+      const { default: WebSocket } = await import('ws');
       this.ws = new WebSocket(this.url);
-      
       this.ws.on('open', () => {
         this.logger.info('WebSocket connected');
         this.running = true;
