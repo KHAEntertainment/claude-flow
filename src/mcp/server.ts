@@ -62,6 +62,7 @@ export class MCPServer implements IMCPServer {
   private toolRepository: InMemoryToolRepository;
   private discoveryService: DiscoveryService;
   private gatingService: GatingService;
+  private sweepInterval?: NodeJS.Timeout;
 
   private readonly serverInfo = {
     name: 'Claude-Flow MCP Server',
@@ -119,8 +120,8 @@ export class MCPServer implements IMCPServer {
       this.requestQueue = new RequestQueue(1000, 30000, logger);
     }
 
-    // Initialize request router
-    this.router = new RequestRouter(this.toolRegistry, logger);
+    // Initialize request router with gating service
+    this.router = new RequestRouter(this.toolRegistry, logger, this.gatingService);
 
     // Initialize tool repository and services
     this.toolRepository = new InMemoryToolRepository();
@@ -146,6 +147,9 @@ export class MCPServer implements IMCPServer {
 
       // Register built-in tools
       await this.registerBuiltInTools();
+      
+      // Start periodic TTL sweeping (every 30 seconds)
+      this.startPeriodicSweeping();
 
       this.running = true;
       this.logger.info('MCP server started successfully');
@@ -163,6 +167,12 @@ export class MCPServer implements IMCPServer {
     this.logger.info('Stopping MCP server');
 
     try {
+      // Stop periodic sweeping
+      if (this.sweepInterval) {
+        clearInterval(this.sweepInterval);
+        this.sweepInterval = undefined;
+      }
+      
       // Stop transport
       await this.transport.stop();
 
@@ -621,5 +631,139 @@ export class MCPServer implements IMCPServer {
         };
       },
     });
+    
+    // Pin toolset tool
+    this.registerTool({
+      name: 'gate/pin_toolset',
+      description: 'Pin a toolset to prevent auto-disable',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { 
+            type: 'string',
+            description: 'Name of the toolset to pin'
+          }
+        },
+        required: ['name']
+      },
+      handler: async (input: unknown) => {
+        const params = input as { name: string };
+        const gateController = (this as any).gateController;
+        if (!gateController) {
+          throw new Error('Tool gating not available');
+        }
+        gateController.pinToolset?.(params.name);
+        return { success: true, message: `Toolset "${params.name}" pinned` };
+      }
+    });
+    
+    // Unpin toolset tool
+    this.registerTool({
+      name: 'gate/unpin_toolset',
+      description: 'Unpin a toolset to allow auto-disable',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { 
+            type: 'string',
+            description: 'Name of the toolset to unpin'
+          }
+        },
+        required: ['name']
+      },
+      handler: async (input: unknown) => {
+        const params = input as { name: string };
+        const gateController = (this as any).gateController;
+        if (!gateController) {
+          throw new Error('Tool gating not available');
+        }
+        gateController.unpinToolset?.(params.name);
+        return { success: true, message: `Toolset "${params.name}" unpinned` };
+      }
+    });
+    
+    // Get pinned toolsets tool
+    this.registerTool({
+      name: 'gate/list_pinned',
+      description: 'List all pinned toolsets',
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      },
+      handler: async () => {
+        const gateController = (this as any).gateController;
+        if (!gateController) {
+          throw new Error('Tool gating not available');
+        }
+        const pinned = gateController.getPinnedToolsets?.() || [];
+        return { pinned };
+      }
+    });
+    
+    // Get usage statistics tool
+    this.registerTool({
+      name: 'gate/usage_stats',
+      description: 'Get usage statistics for active toolsets',
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      },
+      handler: async () => {
+        const gateController = (this as any).gateController;
+        if (!gateController) {
+          throw new Error('Tool gating not available');
+        }
+        const stats = gateController.getUsageStats?.() || {};
+        return stats;
+      }
+    });
   }
+  
+  /**
+   * Start periodic sweeping for TTL/LRU eviction
+   */
+  private startPeriodicSweeping(): void {
+    // Create a gateController instance if available
+    const gateController = (this as any).gateController;
+    if (!gateController) {
+      // No gate controller available, skip sweeping
+      return;
+    }
+    
+    // Sweep every 30 seconds
+    this.sweepInterval = setInterval(() => {
+      try {
+        // Sweep expired toolsets
+        const disabled = gateController.sweepExpiredToolsets?.();
+        if (disabled?.length > 0) {
+          this.logger.info('Auto-disabled toolsets due to TTL expiry', { disabled });
+          // Emit tools.listChanged event if transport supports it
+          if (this.transport && 'send' in this.transport) {
+            (this.transport as any).send({
+              jsonrpc: '2.0',
+              method: 'notifications/tools.listChanged',
+              params: {}
+            });
+          }
+        }
+        
+        // Enforce LRU cap
+        const evicted = gateController.enforceLRUCap?.();
+        if (evicted?.length > 0) {
+          this.logger.info('Auto-disabled toolsets due to LRU cap', { evicted });
+          // Emit tools.listChanged event
+          if (this.transport && 'send' in this.transport) {
+            (this.transport as any).send({
+              jsonrpc: '2.0',
+              method: 'notifications/tools.listChanged',
+              params: {}
+            });
+          }
+        }
+      } catch (error) {
+        this.logger.error('Error during periodic sweeping', error);
+      }
+    }, 30000); // 30 seconds
+  }
+}
 }

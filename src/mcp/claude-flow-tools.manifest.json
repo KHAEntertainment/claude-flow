@@ -1,0 +1,31 @@
+{
+  "id": "claude",
+  "name": "Claude Flow Tools",
+  "description": "Core orchestration and management tools for Claude Flow system",
+  "tools": [
+    "agents/spawn",
+    "agents/list",
+    "agents/status",
+    "agents/terminate",
+    "tasks/create",
+    "tasks/status",
+    "tasks/update",
+    "tasks/cancel",
+    "memory/store",
+    "memory/retrieve",
+    "memory/search",
+    "memory/delete",
+    "swarm/coordinate",
+    "swarm/status",
+    "swarm/optimize",
+    "neural/train",
+    "neural/predict",
+    "neural/evaluate",
+    "workflow/execute",
+    "workflow/status",
+    "workflow/cancel",
+    "performance/analyze",
+    "performance/optimize",
+    "performance/report"
+  ]
+}

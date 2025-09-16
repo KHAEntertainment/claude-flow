@@ -11,6 +11,12 @@
     "enabled": false,
     "blocked": []
   },
+  "autoEnableOnCall": true,
+  "autoEnableAllowlist": ["agents/*", "tasks/*", "memory/*"],
+  "autoEnableBlocklist": [],
+  "autoEnableRespectFilters": true,
+  "autoEnableCaseInsensitive": true,
+  "autoEnableConflictResolution": "prefer-enabled",
   "autoDisableTtlMs": 300000,
   "maxActiveToolsets": 0
 }
