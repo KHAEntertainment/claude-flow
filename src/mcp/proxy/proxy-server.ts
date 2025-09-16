@@ -80,10 +80,12 @@ export class ProxyServer {
       await this.discoverBackendTools();
       
       // Check if we have any working backends or tools
-      if (this.backendConnections.size === 0 || this.toolRepository.getTotalTools() === 0) {
+      const hasBackends = this.backendConnections.size > 0;
+      const hasTools = this.toolRepository.getTotalTools() > 0;
+      if (!hasBackends || !hasTools) {
         this.logger.warn('Proxy started with no active backends or tools discovered');
         // Optionally fail fast if no tools are available
-        if (this.config.requireTools !== false) { // Default to not requiring tools
+        if (this.config.requireTools === true) { // Default is not requiring tools
           throw new Error('No tools available - proxy cannot function without backend tools');
         }
       }
