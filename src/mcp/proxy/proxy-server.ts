@@ -46,7 +46,8 @@ export class ProxyServer {
     // Initialize components
     this.toolRepository = new InMemoryToolRepository();
     // Wire up client manager with eventBus and logger
-    this.clientManager = new MCPClientManager(this.eventBus, this.logger);
+     // around line 49 in src/mcp/proxy/proxy-server.ts
+    this.clientManager = new MCPClientManager(this.logger);
 
     this.discoveryService = new DiscoveryService(this.toolRepository);
     this.gatingService = new GatingService(this.discoveryService);
