@@ -30,12 +30,11 @@ export class WebSocketTransport implements ITransport {
   private running = false;
   private url: string;
   private config: WebSocketTransportConfig;
-  private pendingRequests = new Map<string, {
+  private pendingRequests = new Map<string | number, {
     resolve: (value: MCPResponse) => void;
     reject: (error: Error) => void;
     timer?: NodeJS.Timeout;
   }>();
-
   constructor(
     private logger: ILogger,
     url?: string,
