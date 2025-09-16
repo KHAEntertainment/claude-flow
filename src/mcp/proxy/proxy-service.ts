@@ -68,7 +68,7 @@ export class ProxyService {
 
     if (schema.type === 'object' && schema.properties) {
       if (typeof input !== 'object' || input === null) {
-        throw new MCPError('Input must be an object');
+        throw new MCPError('Invalid params: input must be an object');
       }
 
       const inputObj = input as Record<string, unknown>;
@@ -81,7 +81,10 @@ export class ProxyService {
         
         for (const prop of inputProperties) {
           if (!allowedProperties.includes(prop)) {
-            throw new MCPError(`Unknown property: ${prop}. Allowed properties are: ${allowedProperties.join(', ') || 'none'}`);
+            throw new MCPError(
+              `Invalid params: unknown property "${prop}". ` +
+              `Allowed properties: ${allowedProperties.join(', ') || 'none'}`
+            );
           }
         }
       }
@@ -90,7 +93,7 @@ export class ProxyService {
       if (schema.required && Array.isArray(schema.required)) {
         for (const prop of schema.required) {
           if (!(prop in inputObj)) {
-            throw new MCPError(`Missing required property: ${prop}`);
+            throw new MCPError(`Invalid params: missing required property "${prop}"`);
           }
         }
       }
@@ -102,7 +105,9 @@ export class ProxyService {
           const expectedType = (propSchema as any).type;
 
           if (expectedType && !this.checkType(value, expectedType)) {
-            throw new MCPError(`Invalid type for property ${prop}: expected ${expectedType}`);
+            throw new MCPError(
+              `Invalid params: invalid type for property "${prop}": expected ${expectedType}`
+            );
           }
         }
       }
