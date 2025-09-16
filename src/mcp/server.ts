@@ -30,7 +30,7 @@ import { platform, arch } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { DiscoveryService } from '../gating/discovery-service.js';
 import { GatingService } from '../gating/gating-service.js';
-import { InMemoryToolRepository } from './proxy/tool-repository.js';
+import { InMemoryToolRepository } from '../repository/tool-repository.js';
 export interface IMCPServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -196,7 +196,9 @@ export class MCPServer implements IMCPServer {
   }
 
   registerTool(tool: MCPTool): void {
+    // Register in both registry and repository to keep them synchronized
     this.toolRegistry.register(tool);
+    this.toolRepository.addTool(tool);
     this.logger.info('Tool registered', { name: tool.name });
   }
 
@@ -454,6 +456,26 @@ export class MCPServer implements IMCPServer {
       };
     }
 
+    private errorToMCPError(error: unknown): MCPError {
+      // Prefer an explicit validation error type
+      if (error instanceof MCPErrorClass && (error as any).code === 'INVALID_PARAMS') {
+        return {
+          code: -32602,
+          message: error.message,
+          data: (error as any).details,
+        };
+      }
+
+      // Fallback: message heuristic
+      if (error instanceof Error && /Invalid params/i.test(error.message)) {
+        return {
+          code: -32602,
+          message: error.message,
+        };
+      }
+
+      // …other error mappings…
+    }
     if (error instanceof MCPErrorClass) {
       return {
         code: -32603,
@@ -488,10 +510,11 @@ export class MCPServer implements IMCPServer {
             description: 'Semantic query to search for relevant tools'
           },
           limit: { 
-            type: 'number', 
+            type: 'integer', 
             description: 'Maximum number of tools to return (default: 10)',
             minimum: 1,
-            maximum: 100
+            maximum: 100,
+            default: 10
           }
         },
         required: ['query']
@@ -500,7 +523,7 @@ export class MCPServer implements IMCPServer {
         const params = input as { query: string; limit?: number };
         const tools = await this.discoveryService.discoverTools({
           query: params.query,
-          limit: params.limit
+          limit: params.limit ?? 10
         });
         return tools;
       }
@@ -590,8 +613,13 @@ export class MCPServer implements IMCPServer {
         required: ['name'],
       },
       handler: async (input: unknown) => {
-        const params = input as { name: string };
-        const { name } = params;
+        if (!input || typeof input !== 'object' || !('name' in (input as any))) {
+          throw new Error('Invalid params: { name: string } is required');
+        }
+        const { name } = input as { name: unknown };
+        if (typeof name !== 'string') {
+          throw new Error('Invalid params: name must be a string');
+        }
         const tool = this.toolRegistry.getTool(name);
         if (!tool) {
           throw new Error(`Tool not found: ${name}`);

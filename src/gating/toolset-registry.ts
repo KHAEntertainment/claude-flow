@@ -25,15 +25,11 @@ export class ToolGateController {
   private toolsetTools: Record<string, string[]> = {};
   private filters: ToolFilter[] = [];
   
-  // Auto-enable fields
-  private toolNameToToolsetIndex = new Map<string, string[]>();  // Tool name -> [toolset ids] for auto-enable
-  private manifestsLoaded = false;
-  private inflightEnable = new Map<string, Promise<void>>();
-  private filterConfig: typeof filterConfigDefault;
-  
-  // TTL/LRU tracking fields
+
+  // NEW: TTL/LRU tracking
   private toolsetLastUsed = new Map<string, number>();
-  private toolNameToActiveToolset = new Map<string, string>();  // Tool name -> active toolset for usage tracking
+  private toolNameToToolset = new Map<string, string>();
+
   private pinned = new Set<string>();
   private ttlMs: number = 5 * 60_000; // default 5 minutes
   private maxActiveToolsets: number = 0; // 0 = unlimited
@@ -44,6 +40,7 @@ export class ToolGateController {
   ) {
     this.toolsetLoaders = toolsetLoaders;
     this.filterConfig = filterConfig;
+
     
     // Initialize TTL/LRU configuration
     this.ttlMs = (filterConfig as any).autoDisableTtlMs ?? this.ttlMs;
@@ -51,7 +48,7 @@ export class ToolGateController {
     
     // Build reverse index cheaply (does NOT load full schemas/handlers)
     void this.buildReverseIndex();
-    
+
     // Initialize filters
     if (filterConfig.taskType?.enabled) {
       this.filters.push(new TaskTypeFilter(filterConfig.taskType));
@@ -270,6 +267,16 @@ export class ToolGateController {
       Object.entries(tools).map(([n, t]) => [n, optimizeTool(t)])
     );
     this.toolsetTools[name] = Object.keys(optimized);
+
+
+  // Guard against name collisions across toolsets
+  for (const toolName of Object.keys(optimized)) {
+    const existingOwner = this.toolNameToToolset.get(toolName);
+    if (existingOwner && existingOwner !== name) {
+      throw new Error(
+        `Tool name collision: "${toolName}" already provided by toolset "${existingOwner}"`
+      );
+    }
     
     // Track tool-to-toolset mapping for usage tracking
     for (const toolName of Object.keys(optimized)) {
@@ -286,13 +293,29 @@ export class ToolGateController {
     this.enforceLRUCap();
   }
 
+  // Track tool-to-toolset mapping for usage tracking
+  for (const toolName of Object.keys(optimized)) {
+    this.toolNameToToolset.set(toolName, name);
+  }
+
+  Object.assign(this.loadedTools, optimized);
+  this.activeToolsets.add(name);
+
+  // Mark as recently used
+  this.toolsetLastUsed.set(name, Date.now());
+
+  // Enforce LRU cap after enabling
+  this.enforceLRUCap();
+}
+
   disableToolset(name: string): void {
     if (!this.activeToolsets.has(name)) {
       return;
     }
     for (const toolName of this.toolsetTools[name] || []) {
       delete this.loadedTools[toolName];
-      this.toolNameToActiveToolset.delete(toolName);
+      this.toolNameToToolset.delete(toolName);
+
     }
     delete this.toolsetTools[name];
     this.activeToolsets.delete(name);
@@ -303,7 +326,8 @@ export class ToolGateController {
    * Mark a tool as recently used (updates toolset timestamp)
    */
   markUsed(toolName: string): void {
-    const setName = this.toolNameToActiveToolset.get(toolName);
+
+    const setName = this.toolNameToToolset.get(toolName);
     if (setName && this.activeToolsets.has(setName)) {
       this.toolsetLastUsed.set(setName, Date.now());
     }

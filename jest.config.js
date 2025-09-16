@@ -27,7 +27,9 @@ export default {
         moduleResolution: 'node',
         allowSyntheticDefaultImports: true,
         esModuleInterop: true,
-        target: 'es2022'
+        target: 'es2022',
+        allowImportingTsExtensions: true,
+        noEmit: true
       }
     }],
     '^.+\\.js$': ['babel-jest', {

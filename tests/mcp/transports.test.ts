@@ -32,23 +32,36 @@ describe('MCP Transports', () => {
   describe('StdioTransport', () => {
     let transport: StdioTransport;
     let originalStdoutWrite: typeof process.stdout.write;
+    let originalStdin: typeof process.stdin;
     let mockStdin: EventEmitter;
 
     beforeEach(() => {
       transport = new StdioTransport(mockLogger);
       originalStdoutWrite = process.stdout.write;
+      
+      // Save the original stdin
+      originalStdin = process.stdin;
+      
+      // Create a mock stdin EventEmitter
       mockStdin = new EventEmitter();
       
-      // Mock process.stdin
-      vi.doMock('node:process', () => ({
-        ...vi.importActual('node:process'),
-        stdin: mockStdin,
-      }));
+      // Mock process.stdin directly on the global object
+      // This ensures the already-imported stdin reference sees the mock
+      Object.defineProperty(process, 'stdin', {
+        value: mockStdin,
+        writable: true,
+        configurable: true
+      });
     });
 
     afterEach(() => {
+      // Restore original stdout and stdin
       process.stdout.write = originalStdoutWrite;
-      vi.doUnmock('node:process');
+      Object.defineProperty(process, 'stdin', {
+        value: originalStdin,
+        writable: true,
+        configurable: true
+      });
     });
 
     it('should start and stop correctly', async () => {
