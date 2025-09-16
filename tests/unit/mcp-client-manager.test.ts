@@ -13,7 +13,7 @@ import { EventEmitter } from 'events';
 
 // Try both import styles; adjust as needed based on actual source file location.
 // Replace the path below to the actual source file if different.
-import { MCPClientManager } from '../../src/mcp/MCPClientManager';
+ import { MCPClientManager } from '../../src/mcp/proxy';
 type ILogger = { info: (...args: any[]) => void };
 
 const isFn = (f: any) => typeof f === 'function';
