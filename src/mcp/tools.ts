@@ -240,9 +240,8 @@ export class ToolRegistry extends EventEmitter {
 
       const inputObj = input as Record<string, unknown>;
 
-      // Check for unknown properties (strict validation)
-      // Unless explicitly allowed via additionalProperties: true
-      if (schema.additionalProperties !== true) {
+      // Check for unknown properties only when explicitly disallowed
+      if (schema.additionalProperties === false) {
         const allowedProperties = Object.keys(schema.properties || {});
         const inputProperties = Object.keys(inputObj);
         
@@ -252,7 +251,6 @@ export class ToolRegistry extends EventEmitter {
           }
         }
       }
-
       // Check required properties
       if (schema.required && Array.isArray(schema.required)) {
         for (const prop of schema.required) {
