@@ -62,11 +62,6 @@ export class ToolGateController {
       Object.entries(tools).map(([n, t]) => [n, optimizeTool(t)])
     );
     this.toolsetTools[name] = Object.keys(optimized);
-    
-  const optimized = Object.fromEntries(
-    Object.entries(tools).map(([n, t]) => [n, optimizeTool(t)])
-  );
-  this.toolsetTools[name] = Object.keys(optimized);
 
   // Guard against name collisions across toolsets
   for (const toolName of Object.keys(optimized)) {
