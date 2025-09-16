@@ -2,7 +2,7 @@
 // These tests target the InMemoryToolRepository public API and emphasize search behavior,
 // category/capability indexing, deprecation handling, and repository lifecycle methods.
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { InMemoryToolRepository } from '../../src/repositories/tool-repository.js';
+import { InMemoryToolRepository } from '../../src/repository/tool-repository';
 
 describe('InMemoryToolRepository (unit)', () => {
   let repo: InMemoryToolRepository;
