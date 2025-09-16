@@ -7,8 +7,7 @@
 import { build } from 'esbuild';
 import fs from 'fs';
 import path from 'path';
-import { glob } from 'glob';
-
+import { globSync } from 'glob';
 async function buildProject() {
   console.log('🔨 Building with esbuild (TypeScript compiler workaround)...');
 
