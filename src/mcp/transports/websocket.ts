@@ -75,8 +75,13 @@ export class WebSocketTransport implements ITransport {
       this.ws.on('close', () => {
         this.logger.info('WebSocket closed');
         this.running = false;
+        // Fail all pending requests immediately
+        for (const [id, p] of this.pendingRequests) {
+          if (p.timer) clearTimeout(p.timer);
+          p.reject(new MCPTransportError('WebSocket closed'));
+        }
+        this.pendingRequests.clear();
       });
-
       this.ws.on('error', (error: Error) => {
         this.logger.error('WebSocket error', { error });
       });
