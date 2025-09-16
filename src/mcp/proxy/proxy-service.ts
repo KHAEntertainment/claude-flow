@@ -123,6 +123,8 @@ export class ProxyService {
         return typeof value === 'string';
       case 'number':
         return typeof value === 'number';
+      case 'integer':
+        return typeof value === 'number' && Number.isInteger(value as number);
       case 'boolean':
         return typeof value === 'boolean';
       case 'object':
