@@ -54,10 +54,8 @@ export class ProxyServer {
 
     // Pass toolRepository, clientManager, eventBus, and logger in the correct order
     this.proxyService = new ProxyService(
-      this.toolRepository,
       this.clientManager,
-      this.eventBus,
-      this.logger
+      this.toolRepository
     );
 
     // Initialize the MCP server and wire in gating/discovery services
