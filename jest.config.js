@@ -20,7 +20,7 @@ export default {
     '<rootDir>/tests/.*\\.broken$'
   ],
   transform: {
-    '^.+\.ts$': ['ts-jest', {
+    '^.+\\.ts$': ['ts-jest', {
       useESM: true,
       tsconfig: {
         module: 'es2022',
