@@ -23,8 +23,10 @@ export class GatingService extends EventEmitter {
     const { query, maxTokens } = options;
     
     // Validate inputs and short-circuit on empty budgets/queries
-    const normalizedQuery = query.trim();
-    const safeMaxTokens = Math.max(0, Math.floor(maxTokens));
+    const normalizedQuery = (query ?? '').trim();
+    const safeMaxTokens = Number.isFinite(maxTokens)
+      ? Math.max(0, Math.floor(maxTokens))
+      : 0;
     
     if (!normalizedQuery || safeMaxTokens === 0) {
       // Emit metrics even for empty results
