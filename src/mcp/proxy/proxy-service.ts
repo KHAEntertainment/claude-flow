@@ -1,8 +1,7 @@
 import { MCPTool } from '../../utils/types.js';
 import { MCPClientManager } from './mcp-client-manager.js';
-import { InMemoryToolRepository } from './tool-repository.js';
+import { InMemoryToolRepository } from '../../repository/tool-repository.js';
 import { MCPError } from '../../utils/errors.js';
-
 // Type guard to check if tool has serverName property
 function hasServerName(tool: MCPTool): tool is MCPTool & { serverName: string } {
   return typeof (tool as any).serverName === 'string' && (tool as any).serverName.length > 0;
