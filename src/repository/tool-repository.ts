@@ -72,11 +72,11 @@ export class InMemoryToolRepository {
         score += 50;
       }
 
-      // Description match
-      if (tool.description.toLowerCase().includes(lowerQuery)) {
+      // Description match (guard missing descriptions)
+      const desc = (tool.description ?? '').toLowerCase();
+      if (desc.includes(lowerQuery)) {
         score += 25;
       }
-
       // Category match
       const category = this.extractCategory(tool.name);
       if (category && category.toLowerCase().includes(lowerQuery)) {
