@@ -446,14 +446,26 @@ export class MCPServer implements IMCPServer {
       };
     }
 
-    // Input validation errors (e.g., thrown by handlers)
-    if (error instanceof Error && /Invalid params/i.test(error.message)) {
-      return { 
-        code: -32602, 
-        message: error.message 
-      };
-    }
+    private errorToMCPError(error: unknown): MCPError {
+      // Prefer an explicit validation error type
+      if (error instanceof MCPErrorClass && (error as any).code === 'INVALID_PARAMS') {
+        return {
+          code: -32602,
+          message: error.message,
+          data: (error as any).details,
+        };
+      }
 
+      // Fallback: message heuristic
+      if (error instanceof Error && /Invalid params/i.test(error.message)) {
+        return {
+          code: -32602,
+          message: error.message,
+        };
+      }
+
+      // …other error mappings…
+    }
     if (error instanceof MCPErrorClass) {
       return {
         code: -32603,
